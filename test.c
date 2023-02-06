@@ -259,22 +259,6 @@ TEST( down_left_moves )
   CHECK_EQ( moves, expected );
 }
 
-TEST( down_left_moves_wrap_around )
-{
-  /* make sure edges are masked off correctly */
-  board_t board = new_board_from_str( "B......."
-                                      ".B......"
-                                      "..W....."
-                                      "........"
-                                      "........"
-                                      "B......."
-                                      ".W......"
-                                      "........" );
-
-  uint64_t moves = board_down_right_moves( board.white, board.black );
-  CHECK_EQ( moves, 0 );
-}
-
 TEST( down_right_moves )
 {
   board_t board = new_board_from_str( "....W..."
@@ -318,22 +302,6 @@ TEST( down_right_moves )
 
   moves = board_down_right_moves( board.white, board.black );
   CHECK_EQ( moves, expected );
-}
-
-TEST( down_right_moves_wrap_around )
-{
-  /* make sure edges are masked off correctly */
-  board_t board = new_board_from_str( "B......."
-                                      ".B......"
-                                      "..W....."
-                                      "........"
-                                      "........"
-                                      "B......."
-                                      ".W......"
-                                      "........" );
-
-  uint64_t moves = board_down_moves( board.white, board.black );
-  CHECK_EQ( moves, 0 );
 }
 
 TEST( up_left_moves )
@@ -380,24 +348,6 @@ TEST( up_left_moves )
   moves = board_up_left_moves( board.white, board.black );
   CHECK_EQ( moves, expected );
 }
-
-/* TEST( up_left_moves_wrap_around ) */
-/* { */
-/*   /\* make sure edges are masked off correctly *\/ */
-/*   // FIXME figure this test out. */
-/*   // probably all of these are a little bit broken */
-/*   board_t board = new_board_from_str( "........" */
-/*                                       "........" */
-/*                                       "........" */
-/*                                       "........" */
-/*                                       "........" */
-/*                                       "........" */
-/*                                       "........" */
-/*                                       "........" ); */
-
-/*   uint64_t moves = board_up_left_moves( board.white, board.black ); */
-/*   CHECK_EQ( moves, 0 ); */
-/* } */
 
 TEST( up_right_moves )
 {
@@ -448,3 +398,5 @@ int main()
 {
   return unit_test_run_all();
 }
+
+// FIXME finish up the wraparound tests. all the diagonals are missing them
