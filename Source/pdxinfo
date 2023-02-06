@@ -1,0 +1,5 @@
+name=Othello
+author=David Zmick
+description=A game of othello for playdate
+bundleID=com.dpzmick.playdate-othello
+imagePath=

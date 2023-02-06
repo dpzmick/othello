@@ -1,26 +1,10 @@
 #include "unit.h"
 
 #include "bitboard.h"
+#include "util.h"
 
 #include <assert.h>
 #include <stdbool.h>
-
-uint64_t parse_moves( char const * moves )
-{
-  uint64_t ret = 0;
-
-  for( size_t y = 0; y < 8; ++y ) {
-    for( size_t x = 0; x < 8; ++x ) {
-      switch( *moves++ ) {
-        case '*':
-          ret |= BIT_MASK(x,y);
-          break;
-      }
-    }
-  }
-
-  return ret;
-}
 
 TEST( sanity )
 {
@@ -392,6 +376,45 @@ TEST( up_right_moves )
 
   moves = board_up_right_moves( board.white, board.black );
   CHECK_EQ( moves, expected );
+}
+
+TEST( simple_get_all_moves )
+{
+  board_t board = new_board_from_str( "........"
+                                      "....BBW."
+                                      "...B...."
+                                      "..W....."
+                                      ".BBBW..."
+                                      "....B..."
+                                      "........"
+                                      "........" );
+
+  uint64_t all_moves = board_get_all_moves( &board, PLAYER_WHITE );
+
+  uint64_t expected = parse_moves( ".....*.."
+                                   "...*...."
+                                   "........"
+                                   "........"
+                                   "*......."
+                                   "*.*....."
+                                   "....**.."
+                                   "........" );
+
+  CHECK_EQ( all_moves, expected );
+}
+
+TEST( basic_flips )
+{
+  board_t board = new_board_from_str( "........"
+                                      ".WBB...."
+                                      "........"
+                                      "........"
+                                      "........"
+                                      "........"
+                                      "........"
+                                      "........" );
+
+  uint64_t all_moves = board_make_move( &board, PLAYER_WHITE, 4, 1 );
 }
 
 int main()

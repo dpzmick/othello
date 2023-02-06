@@ -1,6 +1,7 @@
 #pragma once
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -13,18 +14,10 @@
 static_assert(BIT_IDX(0,0)==63, "indexing is not correct");
 static_assert(BIT_IDX(7,7)==0,  "indexing is not correct");
 
-/* useful for debugging and inspecting boards */
-
-static inline uint64_t
-bitboard_from_rows( uint8_t rows[8] )
-{
-  uint64_t ret = 0;
-  for( size_t row = 0; row < 8; ++row ) {
-    uint64_t shift = 64 - 8*(row+1);
-    ret |= ((uint64_t)rows[row]) << shift;
-  }
-  return ret;
-}
+typedef enum {
+  PLAYER_WHITE = 0,
+  PLAYER_BLACK = 1,
+} player_t;
 
 /* Game board structure */
 typedef struct {
@@ -33,44 +26,13 @@ typedef struct {
 } board_t;
 
 static inline void
-board_zero( board_t * board )
-{
-  board->white = 0;
-  board->black = 0;
-}
-
-static inline void
 board_init( board_t * board )
 {
-  board->white = BIT_MASK(3,3) | BIT_MASK(4,4);
-  board->black = BIT_MASK(3,4) | BIT_MASK(4,3);
+  board->white = BIT_MASK(3,4) | BIT_MASK(4,3);
+  board->black = BIT_MASK(3,3) | BIT_MASK(4,4);
 }
 
-static inline board_t
-new_board_from_str( char const * str )
-{
-  uint64_t white = 0;
-  uint64_t black = 0;
-
-  for( size_t y = 0; y < 8; ++y ) {
-    for( size_t x = 0; x < 8; ++x ) {
-      assert(*str == 'B' || *str == 'W' || *str == '.');
-      switch( *str ) {
-        case 'W': white |= BIT_MASK(x,y); break;
-        case 'B': black |= BIT_MASK(x,y); break;
-        case '.': break;
-      }
-      str++;
-    }
-    /* assert(*str == '\n'); */
-    /* str++; // skip newline */
-  }
-
-  return (board_t){ .white=white, .black=black };
-}
-
-void
-board_print( board_t const * board );
+/* "private" functions but exposed for testing */
 
 static inline uint64_t
 board_gen_moves_right_shift( uint64_t own,
@@ -199,7 +161,6 @@ board_up_left_moves( uint64_t own,
   return board_gen_moves_left_shift( own, opp, 9, mask );
 }
 
-
 static inline uint64_t
 board_up_right_moves( uint64_t own,
                       uint64_t opp )
@@ -208,3 +169,95 @@ board_up_right_moves( uint64_t own,
   uint64_t mask = UINT64_C(0x7e7e7e7e7e7e00);
   return board_gen_moves_left_shift( own, opp, 7, mask );
 }
+
+static inline uint64_t
+board_get_all_moves( board_t const * board,
+                     player_t        player )
+{
+  uint64_t own = player==PLAYER_WHITE ? board->white : board->black;
+  uint64_t opp = player==PLAYER_WHITE ? board->black : board->white;
+
+  uint64_t moves = 0;
+  moves |= board_right_moves( own, opp );
+  moves |= board_left_moves( own, opp );
+  moves |= board_up_moves( own, opp );
+  moves |= board_down_moves( own, opp );
+  moves |= board_down_right_moves( own, opp );
+  moves |= board_down_left_moves( own, opp );
+  moves |= board_up_right_moves( own, opp );
+  moves |= board_up_left_moves( own, opp );
+
+  return moves;
+}
+
+static inline bool
+board_make_move( board_t * board,
+                 player_t  player,
+                 uint64_t  mx,
+                 uint64_t  my )
+{
+  uint64_t move = BIT_MASK( mx, my );
+  if( (move & board_get_all_moves( board, player )) == 0 ) return false;
+
+  uint64_t * own_p = player==PLAYER_WHITE ? &board->white : &board->black;
+  uint64_t * opp_p = player==PLAYER_WHITE ? &board->black : &board->white;
+
+  uint64_t own = *own_p;
+  uint64_t opp = *opp_p;
+  uint64_t empty = (~own & ~opp);
+
+  // n,s,e,w,ne,nw,se,sw
+  uint64_t x_adjs[8] = {0,0,1,-1,1,-1,1,-1};
+  uint64_t y_adjs[8] = {1,-1,0,0,1,1,-1,-1};
+  for( size_t d = 0; d < 8; ++d ) {
+    uint64_t dx = x_adjs[d];
+    uint64_t dy = y_adjs[d];
+
+    int64_t x = mx+dx;
+    int64_t y = my+dy;
+
+    // scan in this direction until we hit:
+    // 1. empty
+    // 2. our own piece
+    //
+    // then flip anything along the way
+
+    uint64_t flips = 0;
+    bool hit_own = false;
+    while( 1 ) {
+      if( own & BIT_MASK( x, y ) ) {
+        hit_own = true;
+        break;
+      }
+
+      if( empty & BIT_MASK( x, y ) ) {
+        break;
+      }
+
+      flips |= BIT_MASK( x, y );
+
+      x += dx;
+      y += dy;
+    }
+
+    // do the flips
+    if( hit_own ) {
+      opp &= ~flips;
+      own |= flips;
+    }
+  }
+
+  *opp_p = opp;
+  *own_p = own | BIT_MASK( mx, my ); // include new move
+
+  return true;
+}
+
+// given a board state (own, opp)
+// and a move to make (u64 with one bit set)
+//
+// figure out the new state of the board
+//
+// may need to eliminate lines in all directions
+
+// FIXME need to write a bot too somehow
