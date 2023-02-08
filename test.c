@@ -405,16 +405,145 @@ TEST( simple_get_all_moves )
 
 TEST( basic_flips )
 {
-  board_t board = new_board_from_str( "........"
-                                      ".WBB...."
-                                      "........"
-                                      "........"
-                                      "........"
-                                      "........"
-                                      "........"
-                                      "........" );
 
-  uint64_t all_moves = board_make_move( &board, PLAYER_WHITE, 4, 1 );
+  {
+    board_t board = new_board_from_str( "........"
+                                        ".WBB...."
+                                        "...W...."
+                                        "...B...."
+                                        "....BB.."
+                                        "........"
+                                        "...B...."
+                                        "....B..." );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 4, 1 );
+    CHECK( valid );
+
+    board_t expect = new_board_from_str( "........"
+                                         ".WWWW..."
+                                         "...W...."
+                                         "...B...."
+                                         "....BB.."
+                                         "........"
+                                         "...B...."
+                                         "....B..." );
+
+    CHECK( board_eq( &board, &expect ) );
+  }
+
+  {
+    board_t board = new_board_from_str( "........"
+                                        ".WBB...."
+                                        "...W...."
+                                        "...B...."
+                                        "....BB.."
+                                        "........"
+                                        "...B...."
+                                        "....B..." );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 3, 4 );
+    CHECK( valid );
+
+    board_t expect = new_board_from_str( "........"
+                                         ".WBB...."
+                                         "...W...."
+                                         "...W...."
+                                         "...WBB.."
+                                         "........"
+                                         "...B...."
+                                         "....B..." );
+
+    CHECK( board_eq( &board, &expect ) );
+  }
+
+  {
+    board_t board = new_board_from_str( "........"
+                                        ".WBB...."
+                                        "........"
+                                        "........"
+                                        "....BB.."
+                                        "...B...."
+                                        "...B...."
+                                        "...W...." );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 3, 4 );
+    CHECK( valid );
+
+    board_t expect = new_board_from_str( "........"
+                                         ".WBB...."
+                                         "........"
+                                         "........"
+                                         "...WBB.."
+                                         "...W...."
+                                         "...W...."
+                                         "...W...." );
+
+    CHECK( board_eq( &board, &expect ) );
+  }
+
+  {
+    board_t board = new_board_from_str( "........"
+                                        ".WBB...."
+                                        "........"
+                                        "........"
+                                        "........"
+                                        "...B...."
+                                        "...B...."
+                                        "...B...." );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 3, 4 );
+    CHECK( !valid );
+  }
+
+  {
+    board_t board = new_board_from_str( "........"
+                                        ".WBB...."
+                                        "........"
+                                        "........"
+                                        "...BBW.."
+                                        "...B...."
+                                        "....B..."
+                                        ".....B.." );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 2, 4 );
+    CHECK( valid );
+
+    board_t expect = new_board_from_str( "........"
+                                         ".WBB...."
+                                         "........"
+                                         "........"
+                                         "..WWWW.."
+                                         "...B...."
+                                         "....B..."
+                                         ".....B.." );
+
+    CHECK( board_eq( &board, &expect ) );
+  }
+
+  {
+    board_t board = new_board_from_str( ".W......"
+                                        "..B....."
+                                        "...B...."
+                                        ".....BBB"
+                                        "........"
+                                        "........"
+                                        "........"
+                                        "........" );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 4, 3 );
+    CHECK( valid );
+
+    board_t expect = new_board_from_str( ".W......"
+                                         "..W....."
+                                         "...W...."
+                                         "....WBBB"
+                                         "........"
+                                         "........"
+                                         "........"
+                                         "........" );
+
+    CHECK( board_eq( &board, &expect ) );
+  }
 }
 
 int main()

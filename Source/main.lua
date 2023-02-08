@@ -14,7 +14,7 @@ local cursorLoc = {x=1, y=1}
 local board = board:new()
 
 local function drawStone(x, y, color)
-  local radius <const> = 5
+  local radius <const> = 8
   if color==0 then -- white=0, black=1
     gfx.fillCircleAtPoint(x, y, radius)
   else
@@ -30,48 +30,66 @@ local function drawGrid()
   -- display size is 400x240
   -- grid is 8x8
 
-  local sep_x <const>  = 400/(N+N/2)
-  local sep_y <const>  = (240-40)/N
+  -- the grid needs to be evenly spaced in x and y direction
+  -- so max size it can be is 240px
+  -- but that'd be kinda bulky, so let's do 75% = 180px
+  --
+  -- so we're doing 180x180
+
+  local margin_x <const>  = (400-180)/2
+  local margin_y <const>  = (240-180)/2
+
+  local cell_width <const> = 180/8 -- fractional, but that's okay
 
   -- do vertical lines
-  local line_x         = sep_x*(N/4)
-  local line_y <const> = 20
-  local line_len <const> = (N-1)*sep_y
+  local line_x           = margin_x
+  local line_y <const>   = margin_y
+  local line_len <const> = 240-margin_y*2
 
-  for i=1, N do
+  for i=1, 9 do
     gfx.drawLine(line_x, line_y, line_x, line_y+line_len)
-    line_x += sep_x
-  end
-
-  function drawStoneOnGrid(x,y,color)
-    x = sep_x*(x-1) + sep_x*(N/4)
-    y = sep_y*(y-1) + 20
-    drawStone(x,y,color)
+    line_x += cell_width
   end
 
   -- do horizontal lines
-  local line_x <const> = sep_x*(N/4)
-  local line_len       = (N-1)*sep_x
-  local line_y         = 20
+  local line_x <const> = margin_x
+  local line_y         = margin_y
+  local line_len       = 400-margin_x*2
 
-  for i=1, N do
+  for i=1, 9 do
     gfx.drawLine(line_x, line_y, line_x+line_len, line_y)
-    line_y += sep_y
+    line_y += cell_width
+  end
+
+  function drawStoneGridCoord(x,y,color)
+    local center_x <const> = margin_x + x*cell_width - cell_width/2
+    local center_y <const> = margin_y + y*cell_width - cell_width/2
+    print(center_x, center_y)
+    drawStone(center_x, center_y, color)
   end
 
   for x=1, N do
     for y=1, N do
       local cell = board:get_cell(x,y)
       if cell ~= nil then
-        drawStoneOnGrid(x, y, cell)
+        drawStoneGridCoord(x, y, cell)
       end
     end
   end
 
-  -- draw the cursor
-  gfx.drawRect((cursorLoc.x-1) * sep_x + sep_x*(N/4) - 6,
-               (cursorLoc.y-1) * sep_y + 20 - 6,
-               12, 12)
+  -- FIXME draw possible moves?
+
+  function drawCursor(x, y) -- FIXME this isn't quite centered
+    local line_x <const> = margin_x + x*cell_width + 2
+    local line_y <const> = margin_y + y*cell_width + 2
+    gfx.drawLine(line_x, line_y, line_x+18, line_y+18)
+
+    local line_x <const> = margin_x + x*cell_width + 2
+    local line_y <const> = margin_y + y*cell_width + cell_width - 2
+    gfx.drawLine(line_x, line_y, line_x+18, line_y-18)
+  end
+
+  drawCursor(cursorLoc.x-1, cursorLoc.y-1)
 
   gfx.drawText("NEXT", 5, 5)
   drawStone(50, 13, turn)

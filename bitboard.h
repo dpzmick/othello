@@ -32,6 +32,13 @@ board_init( board_t * board )
   board->black = BIT_MASK(3,3) | BIT_MASK(4,4);
 }
 
+static inline bool
+board_eq( board_t const * a,
+          board_t const * b )
+{
+  return a->white == b->white && a->black == b->black;
+}
+
 /* "private" functions but exposed for testing */
 
 static inline uint64_t
@@ -220,7 +227,7 @@ board_make_move( board_t * board,
     // 1. empty
     // 2. our own piece
     //
-    // then flip anything along the way
+    // Flip pieces
 
     uint64_t flips = 0;
     bool hit_own = false;

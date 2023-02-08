@@ -45,14 +45,22 @@ static size_t       test_cnt = 0;
 
 #define CHECK_EQ(a,b)                                                   \
   do {                                                                  \
-  if( (a)!=(b) ) {                                                      \
-    *__test_failed = true;                                              \
-    printf( "%s:%d: CHECK_EQ(%s, %s): ", __FILE__, __LINE__, #a, #b );  \
-    printf( printf_format(a), a );                                      \
-    printf( "!=" );                                                     \
-    printf( printf_format(b), b );                                      \
-    printf( "\n" );                                                     \
-  }                                                                     \
+    if( (a)!=(b) ) {                                                    \
+      *__test_failed = true;                                            \
+      printf( "%s:%d: CHECK_EQ(%s, %s): ", __FILE__, __LINE__, #a, #b ); \
+      printf( printf_format(a), a );                                    \
+      printf( "!=" );                                                   \
+      printf( printf_format(b), b );                                    \
+      printf( "\n" );                                                   \
+    }                                                                   \
+  } while(0)
+
+#define CHECK( b )                                                      \
+  do {                                                                  \
+    if( !(b) ) {                                                        \
+      *__test_failed = true;                                            \
+      printf( "%s:%d: CHECK(false)\n", __FILE__, __LINE__ );            \
+    }                                                                   \
   } while(0)
 
 static int
