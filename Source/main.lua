@@ -175,9 +175,6 @@ local goInputHandlers = {
       local movesForWhite <const> = board:can_move(0) ~= nil
       local movesForBlack <const> = board:can_move(1) ~= nil
 
-      print(movesForWhite, movesForBlack)
-
-      print("was", turn)
       if turn==0 then -- white
         if board:can_move(1) == 1 then
           turn = 1
@@ -191,7 +188,6 @@ local goInputHandlers = {
           turn = 1
         end
       end
-      print("now", turn)
 
       if board:can_move(turn) ~= 1 then
         gameRunning = false

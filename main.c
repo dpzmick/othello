@@ -91,7 +91,7 @@ l_board_make_move( lua_State * l )
 
   uint64_t x     = (uint64_t)G_pd->lua->getArgInt( 2 ) - 1;
   uint64_t y     = (uint64_t)G_pd->lua->getArgInt( 3 ) - 1;
-  uint64_t color = (uint64_t)G_pd->lua->getArgInt( 4 );
+  player_t color = (player_t)G_pd->lua->getArgInt( 4 );
 
   if( board_make_move( board, color, x, y ) ) {
     G_pd->lua->pushInt( 1 ); // return "true"
@@ -110,7 +110,7 @@ l_board_can_move( lua_State * l )
   board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
   if( !board ) return 0;
 
-  uint64_t color = (uint64_t)G_pd->lua->getArgInt( 2 );
+  player_t color = (player_t)G_pd->lua->getArgInt( 2 );
 
   if( 0 == board_get_all_moves( board, color ) ) {
     G_pd->lua->pushInt( 0 ); // return "true"
@@ -133,6 +133,8 @@ static const lua_reg boardLib[] = {
 int
 eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 {
+  (void)arg;
+
   if( event == kEventInitLua ) {
     G_pd = playdate;
 
