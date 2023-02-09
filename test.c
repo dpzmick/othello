@@ -544,11 +544,61 @@ TEST( basic_flips )
 
     CHECK( board_eq( &board, &expect ) );
   }
+
+  {
+    board_t board = new_board_from_str( "........"
+                                        "........"
+                                        "........"
+                                        "........"
+                                        "..W.W..."
+                                        "...WB..."
+                                        "........"
+                                        ".....B.." );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 4, 6 );
+    CHECK( valid );
+
+    board_t expect = new_board_from_str( "........"
+                                         "........"
+                                         "........"
+                                         "........"
+                                         "..W.W..."
+                                         "...WW..."
+                                         "....W..."
+                                         ".....B.." );
+
+    CHECK( board_eq( &board, &expect ) );
+  }
+
+  {
+    board_t board = new_board_from_str( "..WWBBW."
+                                        "..WBWB.."
+                                        "..BBBBBB"
+                                        "BBBBBBBB"
+                                        "..WBBBBB"
+                                        "...WBBBB"
+                                        ".....BB."
+                                        ".....B.." );
+
+    bool valid = board_make_move( &board, PLAYER_WHITE, 4, 6 );
+    CHECK( valid );
+
+    board_t expect = new_board_from_str( "..WWBBW."
+                                         "..WBWB.."
+                                         "..BBWBBB"
+                                         "BBBBWBBB"
+                                         "..WBWBBB"
+                                         "...WWBBB"
+                                         "....WBB."
+                                         ".....B.." );
+
+    CHECK( board_eq( &board, &expect ) );
+  }
 }
 
 int main()
 {
-  return unit_test_run_all();
+  return unit_test_run_all( NULL );
 }
 
 // FIXME finish up the wraparound tests. all the diagonals are missing them

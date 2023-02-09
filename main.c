@@ -102,11 +102,32 @@ l_board_make_move( lua_State * l )
   return 0;
 }
 
+int
+l_board_can_move( lua_State * l )
+{
+  (void)l;
+
+  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !board ) return 0;
+
+  uint64_t color = (uint64_t)G_pd->lua->getArgInt( 2 );
+
+  if( 0 == board_get_all_moves( board, color ) ) {
+    G_pd->lua->pushInt( 0 ); // return "true"
+    return 1;
+  }
+  else {
+    G_pd->lua->pushInt( 1 ); // return "true"
+    return 1;
+  }
+}
+
 static const lua_reg boardLib[] = {
   { "new",        board_newobject },
   { "__gc",       board_gc },
   { "get_cell",   board_get_cell },
   { "make_move",  l_board_make_move },
+  { "can_move",   l_board_can_move },
 };
 
 int

@@ -1,4 +1,4 @@
-flags=-Wall -Wextra
+flags=-Wall -Wextra -Wconversion -Werror
 
 # ---------
 # local system testing

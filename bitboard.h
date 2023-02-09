@@ -28,8 +28,8 @@ typedef struct {
 static inline void
 board_init( board_t * board )
 {
-  board->white = BIT_MASK(3,4) | BIT_MASK(4,3);
-  board->black = BIT_MASK(3,3) | BIT_MASK(4,4);
+  board->white = BIT_MASK(3,3) | BIT_MASK(4,4);
+  board->black = BIT_MASK(3,4) | BIT_MASK(4,3);
 }
 
 static inline bool
@@ -214,14 +214,14 @@ board_make_move( board_t * board,
   uint64_t empty = (~own & ~opp);
 
   // n,s,e,w,ne,nw,se,sw
-  uint64_t x_adjs[8] = {0,0,1,-1,1,-1,1,-1};
-  uint64_t y_adjs[8] = {1,-1,0,0,1,1,-1,-1};
+  int64_t x_adjs[8] = {0,0,1,-1,1,-1,1,-1};
+  int64_t y_adjs[8] = {1,-1,0,0,1,1,-1,-1};
   for( size_t d = 0; d < 8; ++d ) {
-    uint64_t dx = x_adjs[d];
-    uint64_t dy = y_adjs[d];
+    int64_t dx = x_adjs[d];
+    int64_t dy = y_adjs[d];
 
-    int64_t x = mx+dx;
-    int64_t y = my+dy;
+    int64_t signed_x = (int64_t)mx+dx;
+    int64_t signed_y = (int64_t)my+dy;
 
     // scan in this direction until we hit:
     // 1. empty
@@ -232,6 +232,12 @@ board_make_move( board_t * board,
     uint64_t flips = 0;
     bool hit_own = false;
     while( 1 ) {
+      if( signed_x < 0 || signed_x >= 8 ) break;
+      if( signed_y < 0 || signed_y >= 8 ) break;
+
+      uint64_t x = (uint64_t)signed_x;
+      uint64_t y = (uint64_t)signed_y;
+
       if( own & BIT_MASK( x, y ) ) {
         hit_own = true;
         break;
@@ -243,8 +249,8 @@ board_make_move( board_t * board,
 
       flips |= BIT_MASK( x, y );
 
-      x += dx;
-      y += dy;
+      signed_x += dx;
+      signed_y += dy;
     }
 
     // do the flips

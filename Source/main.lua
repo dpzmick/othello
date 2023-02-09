@@ -7,15 +7,15 @@ import "CoreLibs/sprites"
 local gfx <const> = playdate.graphics
 
 -- UI/driver state
-local N = 8
-local turn = 0
+local turn = 1
 local cursorLoc = {x=1, y=1}
+local gameRunning = true
 
 local board = board:new()
 
 local function drawStone(x, y, color)
   local radius <const> = 8
-  if color==0 then -- white=0, black=1
+  if color==1 then -- white=0, black=1
     gfx.fillCircleAtPoint(x, y, radius)
   else
     -- need to clear the grid underneath
@@ -64,12 +64,11 @@ local function drawGrid()
   function drawStoneGridCoord(x,y,color)
     local center_x <const> = margin_x + x*cell_width - cell_width/2
     local center_y <const> = margin_y + y*cell_width - cell_width/2
-    print(center_x, center_y)
     drawStone(center_x, center_y, color)
   end
 
-  for x=1, N do
-    for y=1, N do
+  for x=1, 8 do
+    for y=1, 8 do
       local cell = board:get_cell(x,y)
       if cell ~= nil then
         drawStoneGridCoord(x, y, cell)
@@ -95,6 +94,34 @@ local function drawGrid()
   drawStone(50, 13, turn)
 end
 
+local function drawGameOver()
+  gfx.clear()
+
+  local cntWhite = 0
+  local cntBlack = 0
+
+  for x=1, 8 do
+    for y=1, 8 do
+      local cell = board:get_cell(x,y)
+      if cell ~= nil then
+        if cell == 0 then
+          cntWhite = cntWhite + 1
+        else
+          cntBlack = cntBlack + 1
+        end
+      end
+    end
+  end
+
+  if cntWhite > cntBlack then -- is tie possible?
+    gfx.drawText("WHITE wins", 5, 5)
+  else
+    gfx.drawText("BLACK wins", 5, 5)
+  end
+
+  playdate.display.flush()
+end
+
 local function redraw()
   gfx.clear()
   drawGrid()
@@ -107,34 +134,71 @@ redraw()
 
 local goInputHandlers = {
   upButtonUp = function()
-    cursorLoc.y = cursorLoc.y - 1
-    redraw()
+    if gameRunning then
+      cursorLoc.y = cursorLoc.y - 1
+      redraw()
+    end
   end,
 
   downButtonUp = function()
-    cursorLoc.y = cursorLoc.y + 1
-    redraw()
+    if gameRunning then
+      cursorLoc.y = cursorLoc.y + 1
+      redraw()
+    end
   end,
 
   leftButtonUp = function()
-    cursorLoc.x = cursorLoc.x - 1
-    redraw()
+    if gameRunning then
+      cursorLoc.x = cursorLoc.x - 1
+      redraw()
+    end
   end,
 
   rightButtonUp = function()
-    cursorLoc.x = cursorLoc.x + 1
-    redraw()
+    if gameRunning then
+      cursorLoc.x = cursorLoc.x + 1
+      redraw()
+    end
   end,
 
   AButtonUp = function()
-    if board:make_move(cursorLoc.x, cursorLoc.y, turn) ~= nil then
-      if turn==0 then
-        turn = 1
-      else
-        turn = 0
-      end
+    if not gameRunning then
+      board = board:new()
+      gameRunning = true
+      turn = 1
 
       redraw()
+      return
+    end
+
+    if board:make_move(cursorLoc.x, cursorLoc.y, turn) ~= nil then
+      local movesForWhite <const> = board:can_move(0) ~= nil
+      local movesForBlack <const> = board:can_move(1) ~= nil
+
+      print(movesForWhite, movesForBlack)
+
+      print("was", turn)
+      if turn==0 then -- white
+        if board:can_move(1) == 1 then
+          turn = 1
+        else
+          turn = 0
+        end
+      else -- turn=1
+        if board:can_move(0) == 1 then
+          turn = 0
+        else
+          turn = 1
+        end
+      end
+      print("now", turn)
+
+      if board:can_move(turn) ~= 1 then
+        gameRunning = false
+        drawGameOver()
+      else
+        redraw()
+      end
     end
   end,
 }
