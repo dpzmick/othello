@@ -64,5 +64,14 @@ extern size_t       test_cnt;
     }                                                                   \
   } while(0)
 
+#define REQUIRE( b )                                                    \
+  do {                                                                  \
+    if( !(b) ) {                                                        \
+      *__test_failed = true;                                            \
+      printf( "%s:%d: CHECK(false)\n", __FILE__, __LINE__ );            \
+      return;                                                           \
+    }                                                                   \
+  } while(0)
+
 int
 unit_test_run_all( char const * filter );

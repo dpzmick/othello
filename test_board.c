@@ -596,4 +596,18 @@ TEST( basic_flips )
   }
 }
 
+TEST( test_board_moves )
+{
+    board_t b = new_board_from_str( "........"
+                                    "........"
+                                    "........"
+                                    "........"
+                                    "........"
+                                    "........"
+                                    "........"
+                                    "........" );
+
+    CHECK_EQ( board_total_moves(&b), 0 );
+}
+
 // FIXME finish up the wraparound tests. all the diagonals are missing them

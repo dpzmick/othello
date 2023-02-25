@@ -1,4 +1,4 @@
-flags=-Wall -Wextra -Wconversion -Werror
+flags=-Wall -Wextra -Wconversion -Werror -g
 
 # FIXME need to cross compile this!
 xxhash_cflags=$(shell pkg-config --cflags libxxhash)
@@ -6,8 +6,8 @@ xxhash_ldflags=$(shell pkg-config --libs libxxhash)
 
 # ---------
 # local system testing
-test: test.c unit.c test_board.c bitboard.h unit.h Makefile
-	gcc ${xxhash_cflags} ${xxhash_ldflags} test.c unit.c test_board.c -o test ${flags}
+test: test.c unit.c test_board.c test_tree.c bitboard.h unit.h game_tree.h common.h Makefile
+	gcc ${xxhash_cflags} ${xxhash_ldflags} test.c unit.c test_board.c test_tree.c -o test ${flags}
 
 run_%: %
 	./$^

@@ -86,3 +86,4 @@ bitboard_from_rows( uint8_t rows[8] )
   }
   return ret;
 }
+

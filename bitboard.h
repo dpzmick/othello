@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common.h"
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -39,7 +41,65 @@ board_eq( board_t const * a,
   return a->white == b->white && a->black == b->black;
 }
 
-/* "private" functions but exposed for testing */
+static inline uint64_t
+board_total_moves( board_t const * board )
+{
+  return (uint64_t)__builtin_popcountll( board->white )
+    + (uint64_t)__builtin_popcountll( board->black );
+}
+
+static inline void
+board_init_random( board_t * board,
+                   uint64_t  seed )
+{
+  // very slow, for testing only
+  // could probably do much better
+
+  board->white = 0;
+  board->black = 0;
+  for( size_t x = 0; x < 8; ++x ) {
+    for( size_t y = 0; y < 8; ++y ) {
+      uint64_t random = hash_u64( seed+x+y ) % 3; // hehe
+      if( random==0 ) continue;
+      if( random==1 ) board->white |= BIT_MASK( x,y );
+      if( random==2 ) board->black |= BIT_MASK( x,y );
+    }
+  }
+}
+
+static inline void
+board_init_random_n_set( board_t * board,
+                         uint64_t  seed,
+                         size_t    n )
+{
+  // very slow, for testing only
+  // could probably do much better
+  // obviously biased towards upper corner
+  // and obviously extrememly slow
+
+  board->white = 0;
+  board->black = 0;
+  size_t cnt = 1;
+
+  assert(n<=64);
+
+  for( size_t j = 0; j < n; ++j ) {
+    // pick where to put the piece
+    for( size_t try = 1; 1; ++try ) {
+      uint64_t x    = hash_u64( seed*cnt++ ) % 8;
+      uint64_t y    = hash_u64( seed*cnt++ ) % 8;
+      uint64_t mask = BIT_MASK( x,y );
+
+      if( board->white&mask || board->black&mask ) continue;
+
+      uint64_t * which = j%2 ? &board->black : &board->white;
+      *which |= mask;
+      break;
+    }
+  }
+}
+
+/* "Private" functions but exposed for testing */
 
 static inline uint64_t
 board_gen_moves_right_shift( uint64_t own,
