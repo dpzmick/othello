@@ -58,7 +58,7 @@ new_board_from_str( char const * str )
   return (board_t){ .white=white, .black=black };
 }
 
-static uint64_t
+static inline uint64_t
 parse_moves( char const * moves )
 {
   uint64_t ret = 0;
@@ -76,7 +76,7 @@ parse_moves( char const * moves )
   return ret;
 }
 
-static uint64_t
+static inline uint64_t
 bitboard_from_rows( uint8_t rows[8] )
 {
   uint64_t ret = 0;

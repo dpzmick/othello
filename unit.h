@@ -6,9 +6,9 @@
 
 typedef void (*test_func_t)();
 
-static char const * unit_test_names[1024];
-static test_func_t  unit_tests[1024];
-static size_t       test_cnt = 0;
+extern char const * unit_test_names[1024];
+extern test_func_t  unit_tests[1024];
+extern size_t       test_cnt;
 
 #define TEST(name) \
   static void TEST_##name();                    \
@@ -64,26 +64,5 @@ static size_t       test_cnt = 0;
     }                                                                   \
   } while(0)
 
-static int
-unit_test_run_all( char const * filter )
-{
-  bool   any_failed = false;
-  size_t filter_len = filter ? strlen( filter ) : 0;
-
-  for( size_t i = 0; i < test_cnt; ++i ) {
-    char const * test_name     = unit_test_names[i];
-    size_t       test_name_len = strlen( test_name );
-
-    if( filter ) {
-      if( filter_len > test_name_len ) continue;
-      if( 0 != memcmp( test_name, filter, filter_len ) ) continue;
-    }
-
-    printf( "Running %s\n", test_name );
-    bool test_failed = false;
-    unit_tests[i](&test_failed);
-    any_failed |= test_failed;
-  }
-
-  return (int)any_failed;
-}
+int
+unit_test_run_all( char const * filter );

@@ -227,7 +227,7 @@ board_make_move( board_t * board,
     // 1. empty
     // 2. our own piece
     //
-    // Flip pieces
+    // Flip pieces we find along the way.
 
     uint64_t flips = 0;
     bool hit_own = false;
@@ -265,12 +265,3 @@ board_make_move( board_t * board,
 
   return true;
 }
-
-// given a board state (own, opp)
-// and a move to make (u64 with one bit set)
-//
-// figure out the new state of the board
-//
-// may need to eliminate lines in all directions
-
-// FIXME need to write a bot too somehow
