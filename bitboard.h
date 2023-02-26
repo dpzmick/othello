@@ -19,6 +19,7 @@ static_assert(BIT_IDX(7,7)==0,  "indexing is not correct");
 typedef enum {
   PLAYER_WHITE = 0,
   PLAYER_BLACK = 1,
+  GAME_TIED = 2,
 } player_t;
 
 /* Game board structure */
@@ -42,10 +43,21 @@ board_eq( board_t const * a,
 }
 
 static inline uint64_t
-board_total_moves( board_t const * board )
+board_white_stones( board_t const * board )
 {
-  return (uint64_t)__builtin_popcountll( board->white )
-    + (uint64_t)__builtin_popcountll( board->black );
+  return (uint64_t)__builtin_popcountll( board->white );
+}
+
+static inline uint64_t
+board_black_stones( board_t const * board )
+{
+  return (uint64_t)__builtin_popcountll( board->black );
+}
+
+static inline uint64_t
+board_total_stones( board_t const * board )
+{
+  return board_white_stones( board ) + board_black_stones( board );
 }
 
 static inline void
@@ -320,8 +332,103 @@ board_make_move( board_t * board,
     }
   }
 
+  // FIXME optimize the above to take advantage of all the clever work we've
+  // done to find valid moves?
+
   *opp_p = opp;
   *own_p = own | BIT_MASK( mx, my ); // include new move
 
   return true;
+}
+
+// FIXME bind to lua
+static inline bool
+board_is_game_over( board_t const * board,
+                    player_t *      out_winner )
+{
+  // check that neither player can move
+  uint64_t white_moves = board_get_all_moves( board, PLAYER_WHITE );
+  uint64_t black_moves = board_get_all_moves( board, PLAYER_BLACK );
+
+  if( white_moves==0 && black_moves==0 ) {
+    uint64_t white_cnt = board_white_stones( board );
+    uint64_t black_cnt = board_black_stones( board );
+    if( white_cnt==black_cnt ) {
+      *out_winner = GAME_TIED;
+    } else if( white_cnt>black_cnt ) {
+      *out_winner = PLAYER_WHITE;
+    } else {
+      *out_winner = PLAYER_BLACK;
+    }
+    return true;
+  }
+  else {
+    return false;
+  }
+}
+
+static inline void
+board_print( board_t const * board )
+{
+  printf("  | 0 ");
+  for( size_t x = 1; x < 8; ++x ) {
+    printf("%zu ", x);
+  }
+  printf("\n--+----------------\n");
+
+  for( size_t y = 0; y < 8; ++y ) {
+    printf("%zu | ", y );
+
+    for( size_t x = 0; x < 8; ++x ) {
+      uint8_t bit_white = (board->white & BIT_MASK(x,y)) != 0;
+      uint8_t bit_black = (board->black & BIT_MASK(x,y)) != 0;
+
+      if( bit_white && bit_black ) {
+        printf( "X " ); // invalid
+      }
+      else if( bit_white ) {
+        printf( "W " );
+      }
+      else if( bit_black ) {
+        printf( "B " );
+      }
+      else {
+        printf( "  " );
+      }
+    }
+    printf("\n");
+  }
+}
+
+static inline player_t
+play_randomly( board_t  board,
+               player_t next_player,
+               uint64_t seed )
+{
+  size_t cnt = 0;
+
+  for( ;; next_player = !next_player, cnt += 1 ) {
+    player_t winner;
+    if( board_is_game_over( &board, &winner ) ) return winner;
+
+    uint64_t moves = board_get_all_moves( &board, next_player );
+    if( !moves ) continue;
+
+    // pick a move at random. FIXME use better random number generator here
+    // FIXME optimize the selector
+    uint64_t n_moves       = (uint64_t)__builtin_popcountll( moves );
+    uint64_t rand_move_idx = hash_u64( seed+cnt ) % n_moves; // FIXME modulo bad
+
+    // extract that move
+    for( uint64_t x = 0; x < 8; ++x ) {
+      for( uint64_t y = 0; y < 8; ++y ) {
+        if( 0==(moves&BIT_MASK(x,y)) ) continue;
+        if( rand_move_idx--==0 ) {
+          // make the move
+          bool ret = board_make_move( &board, next_player, x, y );
+          assert( ret );
+        }
+      }
+    }
+  }
 }

@@ -87,7 +87,7 @@ static inline node_t *
 game_table_get( game_table_t * gt,
                 board_t        board )
 {
-  size_t   board_moves = board_total_moves( &board );
+  size_t   board_stones = board_total_stones( &board );
   size_t   mask        = gt->mask;
   node_t * nodes       = gt->nodes;
   uint64_t hash        = XXH3_64bits( &board, sizeof(board) );
@@ -96,9 +96,9 @@ game_table_get( game_table_t * gt,
   size_t   n_loops     = 0;
 
   while( 1 ) {
-    node_t * node             = &nodes[slot];
-    board_t  node_board       = node->board;
-    size_t   node_board_moves = board_total_moves( &node_board );
+    node_t * node              = &nodes[slot];
+    board_t  node_board        = node->board;
+    size_t   node_board_stones = board_total_stones( &node_board );
 
     n_loops += 1;
 
@@ -108,9 +108,9 @@ game_table_get( game_table_t * gt,
       goto done;
     }
 
-    // boards always evolve by adding new moves
+    // boards always evolve by adding new stones
     // a cell is "empty" if it contains an earlier game state that we no longer care about
-    if( board_moves > node_board_moves ) {
+    if( board_stones > node_board_stones ) {
       // reset node and use it
       node->board    = board;
       node->wins     = 0;
@@ -131,4 +131,48 @@ done:
   gt->n_gets += 1;
   gt->n_loops += n_loops;
   return ret;
+}
+
+// ---------------------------------------------------------------------
+
+static inline bool
+pick_next_move( game_table_t * gt,
+                board_t        current_board,
+                player_t       next_player )
+{
+  // explore all possible moves by this player from this position
+  // we might wipe out the state at this node while finding the next move to make
+  node_t curr = *game_table_get( gt, current_board );
+  (void)curr;
+
+  // find all of the moves we could make from this position
+  uint64_t moves = board_get_all_moves( &current_board, next_player );
+
+  // explore the game tree
+
+  for( uint64_t x = 0; x < 8; ++x ) {
+    for( uint64_t y = 0; y < 8; ++y ) {
+      if( 0==(BIT_MASK(x,y) & moves) ) continue; // cannot move to this location
+
+      board_t board = current_board;
+      bool succ = board_make_move( &board, next_player, x, y );
+      assert( succ ); 
+
+      // FIXME check if someone wins in this state.
+      // if it is us, might as well short circuit and return this move
+      // if it is not us, keep looking
+
+      /* node_t * move_node = game_table_get( gt, board ); */
+
+      // if this node is a "leaf node" (we've played no games from this node
+      // before), pick a few moves to make, then play out the rest of the game
+      // from this state randomly
+
+      // update stats tracking to determine if this is a promising move
+    }
+  }
+
+  assert(false);
+
+  // pick a move to make
 }

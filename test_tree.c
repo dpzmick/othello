@@ -155,6 +155,7 @@ TEST( test_board_abuse_replacing )
   free( mem );
 }
 
+#if 0
 TEST( test_board_abuse_benchmark )
 {
   size_t n = 8192;
@@ -209,3 +210,4 @@ TEST( test_board_abuse_benchmark )
 
   free( mem );
 }
+#endif

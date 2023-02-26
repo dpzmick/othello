@@ -403,6 +403,70 @@ TEST( simple_get_all_moves )
   CHECK_EQ( all_moves, expected );
 }
 
+TEST( start_of_game_all_moves )
+{
+  board_t board = new_board_from_str( "........"
+                                      "........"
+                                      "........"
+                                      "...WB..."
+                                      "...BW..."
+                                      "........"
+                                      "........"
+                                      "........" );
+
+  uint64_t all_moves = board_get_all_moves( &board, PLAYER_WHITE );
+
+  uint64_t expected = parse_moves( "........"
+                                   "........"
+                                   "....*..."
+                                   ".....*.."
+                                   "..*....."
+                                   "...*...."
+                                   "........"
+                                   "........" );
+
+  CHECK_EQ( all_moves, expected );
+
+  all_moves = board_get_all_moves( &board, PLAYER_BLACK );
+
+  expected = parse_moves( "........"
+                          "........"
+                          "...*...."
+                          "..*....."
+                          ".....*.."
+                          "....*..."
+                          "........"
+                          "........" );
+
+  CHECK_EQ( all_moves, expected );
+}
+
+TEST( weird_get_all_moves_1 )
+{
+  board_t board = new_board_from_str( "WWWWWWWB"
+                                      "WWWBBBBB"
+                                      "WBWWBBWB"
+                                      "WBBWBBWB"
+                                      "WBWBWBWB"
+                                      "WBWBBWW."
+                                      "WBBWWWWW"
+                                      "WWWWWWWW" );
+
+  uint64_t all_moves = board_get_all_moves( &board, PLAYER_BLACK );
+
+  uint64_t expected = parse_moves( "........"
+                                   "........"
+                                   "........"
+                                   "........"
+                                   "........"
+                                   ".......*"
+                                   "........"
+                                   "........" );
+
+  CHECK_EQ( all_moves, expected );
+
+}
+
 TEST( basic_flips )
 {
 
@@ -598,16 +662,37 @@ TEST( basic_flips )
 
 TEST( test_board_moves )
 {
-    board_t b = new_board_from_str( "........"
-                                    "........"
-                                    "........"
-                                    "........"
-                                    "........"
-                                    "........"
-                                    "........"
-                                    "........" );
+  board_t b = new_board_from_str( "........"
+                                  "........"
+                                  "........"
+                                  "........"
+                                  "........"
+                                  "........"
+                                  "........"
+                                  "........" );
 
-    CHECK_EQ( board_total_moves(&b), 0 );
+  CHECK_EQ( board_total_stones(&b), 0 );
+
+  b = new_board_from_str( "..W....."
+                          ".....B.."
+                          "........"
+                          "........"
+                          ".W......"
+                          "....B..."
+                          "........"
+                          "........" );
+
+  CHECK_EQ( board_total_stones(&b), 4 );
 }
 
 // FIXME finish up the wraparound tests. all the diagonals are missing them
+
+
+TEST( basic_random_play )
+{
+  /* check that this doesn't segfault or assert, and that it actually terminates */
+  board_t b;
+  board_init( &b );
+  CHECK_EQ( PLAYER_WHITE, play_randomly( b, PLAYER_WHITE, 0xcafebabe ) );
+  CHECK_EQ( PLAYER_BLACK, play_randomly( b, PLAYER_WHITE, 0xdeadbeef ) ); // diff seed, diff result
+}
