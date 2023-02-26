@@ -41,6 +41,9 @@ typedef struct {
   uint64_t game_cnt;            // number of simulated games played from this node
 } node_t;
 
+// 16 KiB of D-cache means we can fit 512 entries of this table into cache
+// whole ram is 16 MiB
+
 typedef struct {
   size_t n_nodes;
   size_t mask;

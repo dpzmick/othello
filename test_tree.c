@@ -154,3 +154,58 @@ TEST( test_board_abuse_replacing )
 
   free( mem );
 }
+
+TEST( test_board_abuse_benchmark )
+{
+  size_t n = 8192;
+  void * mem = malloc( game_table_size( n ) );
+  REQUIRE( mem );
+
+  game_table_t * gt = game_table_new( mem, n );
+  REQUIRE( gt );
+
+  // allocate a ton of memory and save all of the boards to avoid
+  // doing the expensive setup in the loop
+
+  board_t boards[64][n]; // VLA!
+
+  for( size_t i = 1; i<=64; ++i ) {
+    for( size_t j = 1; j <= n; ++j ) {
+      board_init_random_n_set( &boards[i-1][j-1], 0xcafecafebabebabe*j, i );
+    }
+  }
+
+  uint64_t st  = wallclock();
+  size_t   cnt = 0;
+
+  for( size_t i = 1; i<=64; ++i ) { // start at 1
+    for( size_t j = 1; j <= n; ++j ) { // start at 1 to avoid blowing away seed
+      node_t * node = game_table_get( gt, boards[i-1][j-1] );
+      cnt += !!node;
+    }
+  }
+
+  uint64_t ed = wallclock();
+
+  uint64_t lookups         = gt->n_gets;
+  double   sec             = ((double)(ed-st))/1e9;
+  double   lookups_per_sec = ((double)lookups)/sec;
+  double   ns_per_lookup   = ((double)(ed-st))/((double)lookups);
+
+  // on M1, got 230ns per lookup.
+  //
+  // but doing avg of 53 loops per get. One cache line is 512 so that's sort of
+  // okay, but still not great. It may be valuable to robinhood the tombstoned
+  // elements forward (but depends on access pattern).
+  //
+  // that said, the rest of the engine is not going to be able to run 4million
+  // games per second, so this is probably not the slow part (and 4 million per
+  // second is comparable to some of the "fastest hash tables" out in the wild)
+
+  printf( "lookups: %llu, Successfull %zu, total elapsed %0.2f sec\n", lookups, cnt, sec );
+  printf( "Lookups per sec: %0.2f\n", lookups_per_sec );
+  printf( "ns per lookup: %0.2f\n", ns_per_lookup );
+  printf( "loops: %zu, avg loops per get %0.2f\n", gt->n_loops, (double)gt->n_loops/(double)gt->n_gets );
+
+  free( mem );
+}
