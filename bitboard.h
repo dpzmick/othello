@@ -16,6 +16,8 @@
 static_assert(BIT_IDX(0,0)==63, "indexing is not correct");
 static_assert(BIT_IDX(7,7)==0,  "indexing is not correct");
 
+#define MOVE_PASS UINT64_MAX
+
 typedef enum {
   PLAYER_WHITE = 0,
   PLAYER_BLACK = 1,
@@ -400,6 +402,27 @@ board_print( board_t const * board )
   }
 }
 
+// FIXME optmize this too
+static inline void
+extract_move( uint64_t   all_moves,
+              uint64_t   idx,
+              uint64_t * out_x,
+              uint64_t * out_y )
+{
+  for( uint64_t x = 0; x < 8; ++x ) {
+    for( uint64_t y = 0; y < 8; ++y ) {
+      if( 0==(all_moves&BIT_MASK(x,y)) ) continue;
+      if( idx--==0 ) {
+        *out_x = x;
+        *out_y = y;
+        return;
+      }
+    }
+  }
+
+  assert(false); // should be unreachable
+}
+
 static inline player_t
 play_randomly( board_t  board,
                player_t next_player,
@@ -419,16 +442,11 @@ play_randomly( board_t  board,
     uint64_t n_moves       = (uint64_t)__builtin_popcountll( moves );
     uint64_t rand_move_idx = hash_u64( seed+cnt ) % n_moves; // FIXME modulo bad
 
-    // extract that move
-    for( uint64_t x = 0; x < 8; ++x ) {
-      for( uint64_t y = 0; y < 8; ++y ) {
-        if( 0==(moves&BIT_MASK(x,y)) ) continue;
-        if( rand_move_idx--==0 ) {
-          // make the move
-          bool ret = board_make_move( &board, next_player, x, y );
-          assert( ret );
-        }
-      }
-    }
+    uint64_t x,y;
+    extract_move( moves, rand_move_idx, &x, &y );
+
+    // make the move
+    bool ret = board_make_move( &board, next_player, x, y );
+    assert( ret );
   }
 }
