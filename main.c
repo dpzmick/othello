@@ -14,10 +14,12 @@ static int
 board_newobject( lua_State * l )
 {
   (void)l;
+  G_pd->system->logToConsole( "%s:%i: Creating new board", __FILE__, __LINE__ );
 
   board_t * board = G_pd->system->realloc( NULL, sizeof(board_t) );
   board_init( board );
 
+  G_pd->system->logToConsole( "%s:%i: Created new board", __FILE__, __LINE__ );
   G_pd->lua->pushObject( board, "board", 0 );
   return 1;
 }
@@ -193,11 +195,19 @@ eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
       G_pd->system->logToConsole( "%s:%i: registerClass failed, %s", __FILE__, __LINE__, err );
     }
 
+    G_pd->system->logToConsole( "%s:%i: API fully configured", __FILE__, __LINE__ );
+
     size_t n = 8192;
+    G_pd->system->logToConsole( "%s:%i: %zu bytes required for table of size %zu", __FILE__, __LINE__, game_table_size( n ), n );
+
     void * mem = G_pd->system->realloc( NULL, game_table_size( n ) );
     assert(mem);
 
+    G_pd->system->logToConsole( "%s:%i: game table allocated", __FILE__, __LINE__ );
+
     G_game_table = game_table_new( mem, n );
+
+    G_pd->system->logToConsole( "%s:%i: init complete", __FILE__, __LINE__ );
   }
 
   return 0;

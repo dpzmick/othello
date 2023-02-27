@@ -36,7 +36,7 @@ build/pdex.bin: main.c game_tree.h bitboard.h common.h Makefile
 	mkdir -p build
 	/usr/local/bin/arm-none-eabi-gcc -c -g ${CROSS_CC_FLAGS} -I . -I /Users/dpzmick/Developer/PlaydateSDK/C_API main.c -o build/main.o
 	/usr/local/bin/arm-none-eabi-gcc -c -g ${CROSS_CC_FLAGS} -I . -I /Users/dpzmick/Developer/PlaydateSDK/C_API /Users/dpzmick/Developer/PlaydateSDK/C_API/buildsupport/setup.c -o build/setup.o
-	/usr/local/bin/arm-none-eabi-gcc -g -lm build/main.o build/setup.o -mthumb -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-sp-d16 -D__FPU_USED=1 -T/Users/dpzmick/Developer/PlaydateSDK/C_API/buildsupport/link_map.ld -Wl,-Map=build/pdex.map,--cref,--gc-sections,--no-warn-mismatch    -o build/pdex.elf
+	/usr/local/bin/arm-none-eabi-gcc -g build/main.o build/setup.o -mthumb -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-sp-d16 -D__FPU_USED=1 -T/Users/dpzmick/Developer/PlaydateSDK/C_API/buildsupport/link_map.ld -Wl,-Map=build/pdex.map,--cref,--gc-sections,--no-warn-mismatch    -o build/pdex.elf
 	/usr/local/bin/arm-none-eabi-objcopy -O binary build/pdex.elf build/pdex.bin
 
 simulate: build/pdx.dylib build/pdex.bin Makefile
