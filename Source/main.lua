@@ -174,6 +174,8 @@ local goInputHandlers = {
     end
 
     if board:make_move(cursorLoc.x, cursorLoc.y, turn) ~= nil then
+      redraw()
+
       -- keep making moves until black can move again
       while true do
         if board:game_over() then
@@ -181,16 +183,14 @@ local goInputHandlers = {
           drawGameOver()
           break
         else
-          -- computer is white
           board:computer_take_turn()
-        end
 
-        if board:can_move(1) then
-          turn = 1
-          redraw()
-          break
+          if board:can_move(1) then
+            turn = 1
+            redraw()
+            break
+          end
         end
-
       end
     end
   end,
