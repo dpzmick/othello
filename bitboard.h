@@ -2,7 +2,6 @@
 
 #include "common.h"
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -369,6 +368,9 @@ board_is_game_over( board_t const * board,
   }
 }
 
+#ifndef TARGET_PLAYDATE
+#include <stdio.h>
+
 static inline void
 board_print( board_t const * board )
 {
@@ -401,6 +403,7 @@ board_print( board_t const * board )
     printf("\n");
   }
 }
+#endif
 
 // FIXME optmize this too
 static inline void
@@ -420,7 +423,7 @@ extract_move( uint64_t   all_moves,
     }
   }
 
-  assert(false); // should be unreachable
+  assert( false ); // should be unreachable
 }
 
 static inline player_t

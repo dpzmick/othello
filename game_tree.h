@@ -1,11 +1,22 @@
 #pragma once
 
+#include "common.h"
 #include "bitboard.h"
 
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <xxhash.h>
+
+/* #define XXH_INLINE_ALL */
+/* #define XXH_NO_STDLIB */
+/* #include <xxhash.h> */
+
+uint64_t XXH3_64bits( void * buf, size_t sz )
+{
+  (void)buf;
+  (void)sz;
+  return 1;
+}
 
 #define LIKELY(c)   __builtin_expect(c, 1)
 #define UNLIKELY(c) __builtin_expect(c, 0)
@@ -144,6 +155,9 @@ game_table_get( game_table_t * gt,
 }
 
 // ---------------------------------------------------------------------
+#ifndef TARGET_PLAYDATE
+#include <stdio.h>
+
 static inline void
 print_tree( game_table_t * gt,
             board_t        board,
@@ -175,6 +189,7 @@ print_tree( game_table_t * gt,
     print_tree( gt, child, !next_player, depth+1 );
   }
 }
+#endif
 
 static inline void
 select_from_children( game_table_t * gt,
@@ -187,7 +202,7 @@ select_from_children( game_table_t * gt,
 {
   uint64_t picked_move_x = (size_t)-1;
   uint64_t picked_move_y = (size_t)-1;
-  double   best_criteria = -1.0; // all computed criteria are positive
+  float best_criteria = -1.0f; // all computed criteria are positive
 
   /* printf("looking for moves with %zu options\n", n_moves); */
   for( size_t move = 0; move < n_moves; ++move ) {
@@ -209,13 +224,13 @@ select_from_children( game_table_t * gt,
       break;
     }
 
-    double criteria = 0.0;
+    float criteria = 0.0f;
     if( move_node->game_cnt > 0 ) {
-      criteria += (double)move_node->win_cnt / (double)move_node->game_cnt;
+      criteria += (float)move_node->win_cnt / (float)move_node->game_cnt;
     }
 
     if( curr.game_cnt > 0 && move_node->game_cnt > 0 ) {
-      criteria += sqrt(2) * sqrt(log2(curr.game_cnt) / (double)move_node->game_cnt);
+      criteria += sqrtf(2.0) * sqrtf(log2f(curr.game_cnt) / (float)move_node->game_cnt);
     }
 
     if( criteria > best_criteria ) {
@@ -329,7 +344,7 @@ pick_next_move( game_table_t * gt,
 
   // now pick the move that maximizes likelyhood we win
   size_t move_idx      = (size_t)-1;
-  double best_criteria = -1;
+  float best_criteria = -1;
 
   for( size_t move = 0; move < n_moves; ++move ) {
     uint64_t mx, my;
@@ -342,9 +357,9 @@ pick_next_move( game_table_t * gt,
     node_t * move_node = game_table_get( gt, upd_board );
     assert( move_node ); // table isn't big enough
 
-    double criteria = 0;
+    float criteria = 0.0f;
     if( move_node->game_cnt ) {
-      criteria = (double)move_node->win_cnt / (double)move_node->game_cnt;
+      criteria = (float)move_node->win_cnt / (float)move_node->game_cnt;
     }
 
     if( criteria > best_criteria ) {

@@ -113,6 +113,8 @@ local function drawGameOver()
     end
   end
 
+  -- FIXME use the winner from the C code?
+
   if cntWhite > cntBlack then -- is tie possible?
     gfx.drawText("WHITE wins", 5, 5)
   else
@@ -172,28 +174,23 @@ local goInputHandlers = {
     end
 
     if board:make_move(cursorLoc.x, cursorLoc.y, turn) ~= nil then
-      local movesForWhite <const> = board:can_move(0) ~= nil
-      local movesForBlack <const> = board:can_move(1) ~= nil
-
-      if turn==0 then -- white
-        if board:can_move(1) == 1 then
-          turn = 1
+      -- keep making moves until black can move again
+      while true do
+        if board:game_over() then
+          gameRunning = false
+          drawGameOver()
+          break
         else
-          turn = 0
+          -- computer is white
+          board:computer_take_turn()
         end
-      else -- turn=1
-        if board:can_move(0) == 1 then
-          turn = 0
-        else
-          turn = 1
-        end
-      end
 
-      if board:can_move(turn) ~= 1 then
-        gameRunning = false
-        drawGameOver()
-      else
-        redraw()
+        if board:can_move(1) then
+          turn = 1
+          redraw()
+          break
+        end
+
       end
     end
   end,

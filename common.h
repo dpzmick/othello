@@ -1,6 +1,15 @@
+#pragma once
+
 #include <stdint.h>
 
 #define NS 1000000000UL
+
+#ifdef TARGET_PLAYDATE
+#define assert(f)
+#define static_assert(e,m) _Static_assert(e,m)
+#else
+#include <assert.h>
+#endif
 
 // mumur3 hash finalizer
 static inline uint64_t
@@ -14,7 +23,8 @@ hash_u64( uint64_t x )
   return x;
 }
 
-// FIXME not going to be supported on the actual target
+#ifndef TARGET_PLAYDATE
+
 #include <time.h>
 
 static inline uint64_t
@@ -25,3 +35,5 @@ wallclock( void )
   if( ret != 0 ) return (uint64_t)-1; // hopefully noticable
   return (uint64_t)tp->tv_sec*NS + (uint64_t)tp->tv_nsec;
 }
+
+#endif

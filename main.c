@@ -1,12 +1,14 @@
-#include <stdio.h>
-#include <stdlib.h>
+//#include <stdio.h>
+//#include <stdlib.h>
 #include <stdbool.h>
 
 #include "pd_api.h"
 
 #include "bitboard.h"
+#include "game_tree.h"
 
-static PlaydateAPI* G_pd = NULL;
+static PlaydateAPI*   G_pd         = NULL;
+static game_table_t * G_game_table = NULL; // FIXME don't use global
 
 static int
 board_newobject( lua_State * l )
@@ -113,7 +115,7 @@ l_board_can_move( lua_State * l )
   player_t color = (player_t)G_pd->lua->getArgInt( 2 );
 
   if( 0 == board_get_all_moves( board, color ) ) {
-    G_pd->lua->pushInt( 0 ); // return "true"
+    G_pd->lua->pushInt( 0 ); // return "false" (could also return nil)
     return 1;
   }
   else {
@@ -122,12 +124,60 @@ l_board_can_move( lua_State * l )
   }
 }
 
+int
+l_board_game_over( lua_State * l )
+{
+  (void)l;
+
+  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !board ) return 0;
+
+  player_t winner;
+  if( board_is_game_over( board, &winner ) ) {
+    G_pd->lua->pushInt( (int)winner ); // return the winner
+    return 1;
+  }
+  else {
+    // return nil
+    return 0;
+  }
+}
+
+int
+l_board_computer_take_turn( lua_State * l )
+{
+  (void)l;
+
+  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !board ) return 0;
+
+  // computer is white
+
+  uint64_t move = pick_next_move( G_game_table, *board, PLAYER_WHITE );
+  if( move != MOVE_PASS ) {
+    // FIXME gross
+    for( size_t x = 0; x < 8; ++x ) {
+      for( size_t y = 0; y < 8; ++y ) {
+        if( move & BIT_MASK(x,y) ) {
+          bool ret = board_make_move( board, PLAYER_WHITE, x, y );
+          (void)ret;
+          //assert(ret);
+        }
+      }
+    }
+  }
+
+  return 0;
+}
+
 static const lua_reg boardLib[] = {
-  { "new",        board_newobject },
-  { "__gc",       board_gc },
-  { "get_cell",   board_get_cell },
-  { "make_move",  l_board_make_move },
-  { "can_move",   l_board_can_move },
+  { "new",                board_newobject },
+  { "__gc",               board_gc },
+  { "get_cell",           board_get_cell },
+  { "make_move",          l_board_make_move },
+  { "can_move",           l_board_can_move },
+  { "game_over",          l_board_game_over },
+  { "computer_take_turn", l_board_computer_take_turn },
 };
 
 int
@@ -142,6 +192,12 @@ eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     if( !G_pd->lua->registerClass( "board", boardLib, NULL, 0, &err ) ) {
       G_pd->system->logToConsole( "%s:%i: registerClass failed, %s", __FILE__, __LINE__, err );
     }
+
+    size_t n = 8192;
+    void * mem = G_pd->system->realloc( NULL, game_table_size( n ) );
+    assert(mem);
+
+    G_game_table = game_table_new( mem, n );
   }
 
   return 0;

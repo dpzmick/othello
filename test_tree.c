@@ -3,7 +3,6 @@
 #include "util.h"
 #include "game_tree.h"
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 
