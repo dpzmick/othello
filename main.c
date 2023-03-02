@@ -7,25 +7,32 @@
 #include "bitboard.h"
 #include "game_tree.h"
 
-static PlaydateAPI*   G_pd         = NULL;
-static game_table_t * G_game_table = NULL; // FIXME don't use global
+typedef struct {
+  board_t      board[1];
+  game_table_t table[];         // trailing array member, kinda a hack
+} l_board_t;
+
+static PlaydateAPI * G_pd = NULL;
 
 static int
-board_newobject( lua_State * l )
+l_board_newobject( lua_State * l )
 {
   (void)l;
-  G_pd->system->logToConsole( "%s:%i: Creating new board", __FILE__, __LINE__ );
 
-  board_t * board = G_pd->system->realloc( NULL, sizeof(board_t) );
-  board_init( board );
+  _Static_assert(offsetof(l_board_t, table) == sizeof(board_t), "padding breaks alloc size");
+  size_t sz = sizeof(board_t) + game_table_size( 8192 );
 
-  G_pd->system->logToConsole( "%s:%i: Created new board", __FILE__, __LINE__ );
-  G_pd->lua->pushObject( board, "board", 0 );
+  l_board_t * l_board = G_pd->system->realloc( NULL, sz );
+  board_init( l_board->board );
+
+  game_table_new( l_board->table, 8192 ); // FIXME rename to init
+
+  G_pd->lua->pushObject( l_board, "board", 0 );
   return 1;
 }
 
 static int
-board_gc( lua_State * l )
+l_board_gc( lua_State * l )
 {
   (void)l;
 
@@ -36,13 +43,15 @@ board_gc( lua_State * l )
   return 0;
 }
 
-int
-board_get_cell( lua_State * l )
+static int
+l_board_get_cell( lua_State * l )
 {
   (void)l;
 
-  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
-  if( !board ) return 1;
+  l_board_t const * l_board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !l_board ) return 1;
+
+  board_t const * board = l_board->board;
 
   // FIXME should be checking if negative
   // but I just will never pass that
@@ -81,13 +90,15 @@ board_get_cell( lua_State * l )
   return 0;
 }
 
-int
+static int
 l_board_make_move( lua_State * l )
 {
   (void)l;
 
-  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
-  if( !board ) return 1;
+  l_board_t * l_board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !l_board ) return 1;
+
+  board_t * board = l_board->board;
 
   // FIXME should be checking if negative
   // but I just will never pass that
@@ -106,17 +117,20 @@ l_board_make_move( lua_State * l )
   return 0;
 }
 
-int
+static int
 l_board_can_move( lua_State * l )
 {
   (void)l;
 
-  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
-  if( !board ) return 0;
+  l_board_t const * l_board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !l_board ) return 0;
+
+  board_t const * board = l_board->board;
 
   player_t color = (player_t)G_pd->lua->getArgInt( 2 );
 
   if( 0 == board_get_all_moves( board, color ) ) {
+    // FIXME
     G_pd->lua->pushInt( 0 ); // return "false" (could also return nil)
     return 1;
   }
@@ -126,13 +140,15 @@ l_board_can_move( lua_State * l )
   }
 }
 
-int
+static int
 l_board_game_over( lua_State * l )
 {
   (void)l;
 
-  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
-  if( !board ) return 0;
+  l_board_t const * l_board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !l_board ) return 0;
+
+  board_t const * board = l_board->board;
 
   player_t winner;
   if( board_is_game_over( board, &winner ) ) {
@@ -143,25 +159,33 @@ l_board_game_over( lua_State * l )
     // return nil
     return 0;
   }
+  return 0;
 }
 
-int
+static int
 l_board_computer_take_turn( lua_State * l )
 {
   (void)l;
 
-  board_t * board = G_pd->lua->getArgObject( 1, "board", NULL );
-  if( !board ) return 0;
+  l_board_t * l_board = G_pd->lua->getArgObject( 1, "board", NULL );
+  if( !l_board ) return 0;
+
+  board_t *      board = l_board->board;
+  game_table_t * table = l_board->table;
 
   // computer is white
 
-  uint64_t move = pick_next_move( G_game_table, *board, PLAYER_WHITE );
+  G_pd->system->logToConsole( "%s:%i: picking move", __FILE__, __LINE__ );
+  uint64_t move = pick_next_move( table, *board, PLAYER_WHITE );
+  G_pd->system->logToConsole( "%s:%i: move picked", __FILE__, __LINE__ );
+
   if( move != MOVE_PASS ) {
     // FIXME gross
     for( size_t x = 0; x < 8; ++x ) {
       for( size_t y = 0; y < 8; ++y ) {
         if( move & BIT_MASK(x,y) ) {
           bool ret = board_make_move( board, PLAYER_WHITE, x, y );
+          return 0;
           (void)ret;
           //assert(ret);
         }
@@ -173,17 +197,20 @@ l_board_computer_take_turn( lua_State * l )
 }
 
 static const lua_reg boardLib[] = {
-  { "new",                board_newobject },
-  { "__gc",               board_gc },
-  { "get_cell",           board_get_cell },
+  { "new",                l_board_newobject },
+  { "__gc",               l_board_gc },
+  { "get_cell",           l_board_get_cell },
   { "make_move",          l_board_make_move },
   { "can_move",           l_board_can_move },
   { "game_over",          l_board_game_over },
   { "computer_take_turn", l_board_computer_take_turn },
+  { NULL, NULL }
 };
 
 int
-eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
+eventHandler( PlaydateAPI*  playdate,
+              PDSystemEvent event,
+              uint32_t      arg )
 {
   (void)arg;
 
@@ -196,18 +223,6 @@ eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     }
 
     G_pd->system->logToConsole( "%s:%i: API fully configured", __FILE__, __LINE__ );
-
-    size_t n = 8192;
-    G_pd->system->logToConsole( "%s:%i: %zu bytes required for table of size %zu", __FILE__, __LINE__, game_table_size( n ), n );
-
-    void * mem = G_pd->system->realloc( NULL, game_table_size( n ) );
-    assert(mem);
-
-    G_pd->system->logToConsole( "%s:%i: game table allocated", __FILE__, __LINE__ );
-
-    G_game_table = game_table_new( mem, n );
-
-    G_pd->system->logToConsole( "%s:%i: init complete", __FILE__, __LINE__ );
   }
 
   return 0;

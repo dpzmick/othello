@@ -342,7 +342,6 @@ board_make_move( board_t * board,
   return true;
 }
 
-// FIXME bind to lua
 static inline bool
 board_is_game_over( board_t const * board,
                     player_t *      out_winner )
