@@ -11,12 +11,7 @@
 /* #define XXH_NO_STDLIB */
 /* #include <xxhash.h> */
 
-uint64_t XXH3_64bits( void * buf, size_t sz )
-{
-  (void)buf;
-  (void)sz;
-  return 1;
-}
+#include "hash.h"
 
 #define LIKELY(c)   __builtin_expect(c, 1)
 #define UNLIKELY(c) __builtin_expect(c, 0)
@@ -103,7 +98,8 @@ game_table_get_advanced( game_table_t * gt,
   size_t   board_stones = board_total_stones( &board );
   size_t   mask        = gt->mask;
   node_t * nodes       = gt->nodes;
-  uint64_t hash        = XXH3_64bits( &board, sizeof(board) );
+  /* uint64_t hash        = XXH3_64bits( &board, sizeof(board) ); */
+  uint64_t hash        = fd_hash( 0, &board, sizeof(board) );
   size_t   slot        = hash & mask;
   node_t * ret         = NULL;
   size_t   n_loops     = 0;
@@ -267,7 +263,7 @@ pick_next_move( game_table_t * gt,
 
   // perform evaluation 100 times on each loop
   // some of what we pick will stick around
-  for( size_t trial = 0; trial < 100; ++trial ) {
+  for( size_t trial = 0; trial < 5000; ++trial ) {
     /* printf("-----TRIAL %zu\n", trial); */
     /* print_tree( gt, current_board, next_player, 0 ); */
 

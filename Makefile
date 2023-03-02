@@ -32,7 +32,7 @@ endif
 SRC = main.c
 
 # List all user directories here
-UINCDIR =
+UINCDIR = /Users/dpzmick/spack/opt/spack/darwin-monterey-m1/apple-clang-14.0.0/xxhash-0.8.1-ojxrg23ipq6kbktzd5jbqj2uthciup67/include
 
 # List user asm files
 UASRC =
