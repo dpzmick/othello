@@ -1,0 +1,5 @@
+name=Benchmarks
+author=David Zmick
+description=microbenchmarks
+bundleID=com.dpzmick.playdate-microbenchmarks
+imagePath=
