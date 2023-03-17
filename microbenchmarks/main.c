@@ -11,7 +11,7 @@ static void
 run_memcpy( void )
 {
   size_t sz    = 4ul * 1024ul * 1024ul;
-  size_t iters = 4;
+  size_t iters = 2;
 
   void * foo = G_pd->system->realloc( NULL, sz );
   if( !foo ) {
@@ -42,10 +42,10 @@ run_memcpy( void )
 
   char * buf;
 
-  G_pd->system->formatString( &buf, "MiB/s: %0.3f", mib_per_sec );
+  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
 
-  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", bytes_per_cycle );
+  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
 
   G_pd->system->realloc( buf, 0 );
@@ -55,7 +55,7 @@ static void
 run_fast_copy( void )
 {
   size_t sz    = 4ul * 1024ul * 1024ul;
-  size_t iters = 4;
+  size_t iters = 2;
 
   void * foo = G_pd->system->realloc( NULL, sz );
   if( !foo ) {
@@ -86,10 +86,10 @@ run_fast_copy( void )
 
   char * buf;
 
-  G_pd->system->formatString( &buf, "MiB/s: %0.3f", mib_per_sec );
+  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
 
-  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", bytes_per_cycle );
+  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
 
   G_pd->system->realloc( buf, 0 );
@@ -99,7 +99,7 @@ static void
 run_stream_copy( void )
 {
   size_t sz    = 4ul * 1024ul * 1024ul;
-  size_t iters = 4;
+  size_t iters = 2;
 
   float * _foo = G_pd->system->realloc( NULL, sz );
   if( !_foo ) {
@@ -123,21 +123,16 @@ run_stream_copy( void )
                                 _foo, _bar, foo, bar, sz );
   }
 
-  goto quit;
-
   G_pd->system->resetElapsedTime();
   asm volatile( "dsb SY" );
   for( size_t i = 0; i < iters; ++i ) {
-    stream_copy( foo, bar, sz );
+    stream_copy2( foo, bar, sz/sizeof(float) );
   }
   asm volatile( "dsb ST" );
   float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
 
-  quit:
-
   G_pd->system->realloc( _bar, 0 );
   G_pd->system->realloc( _foo, 0 );
-  return;
 
   float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
   float cycles          = elapsed_sec * G_freq_hz;
@@ -145,11 +140,194 @@ run_stream_copy( void )
 
   char * buf;
 
-  G_pd->system->formatString( &buf, "MiB/s: %0.3f", mib_per_sec );
+  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
 
-  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", bytes_per_cycle );
+  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
+
+  G_pd->system->realloc( buf, 0 );
+}
+
+static void
+run_stream_scale( void )
+{
+  size_t sz    = 4ul * 1024ul * 1024ul;
+  size_t iters = 2;
+
+  float * _foo = G_pd->system->realloc( NULL, sz );
+  if( !_foo ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * _bar = G_pd->system->realloc( NULL, sz );
+  if( !_bar ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * foo = (float*)align_ptr_up( (intptr_t)_foo, alignof(float) );
+  float * bar = (float*)align_ptr_up( (intptr_t)_bar, alignof(float) );
+
+  // shrink size to account for alignment that we had to shave off
+  sz -= MAX( foo-_foo, bar-_bar );
+  if( foo!=_foo || bar !=_bar ) {
+    G_pd->system->logToConsole( "Got unaligned pointers %p and %p. Aligned to %p and %p. sz=%zu",
+                                _foo, _bar, foo, bar, sz );
+  }
+
+  G_pd->system->resetElapsedTime();
+  asm volatile( "dsb SY" );
+  for( size_t i = 0; i < iters; ++i ) {
+    stream_scale( foo, bar, 3.14f, sz/sizeof(float) );
+  }
+  asm volatile( "dsb ST" );
+  float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
+
+  G_pd->system->realloc( _bar, 0 );
+  G_pd->system->realloc( _foo, 0 );
+
+  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
+  float cycles          = elapsed_sec * G_freq_hz;
+  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+
+  char * buf;
+
+  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+
+  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
+
+  G_pd->system->realloc( buf, 0 );
+}
+
+static void
+run_stream_sum( void )
+{
+  size_t sz    = 4ul * 1024ul * 1024ul;
+  size_t iters = 2;
+
+  float * _foo = G_pd->system->realloc( NULL, sz );
+  if( !_foo ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * _bar = G_pd->system->realloc( NULL, sz );
+  if( !_bar ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * _baz = G_pd->system->realloc( NULL, sz );
+  if( !_baz ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * foo = (float*)align_ptr_up( (intptr_t)_foo, alignof(float) );
+  float * bar = (float*)align_ptr_up( (intptr_t)_bar, alignof(float) );
+  float * baz = (float*)align_ptr_up( (intptr_t)_baz, alignof(float) );
+
+  // shrink size to account for alignment that we had to shave off
+  sz -= MAX( MAX( foo-_foo, bar-_bar ), baz-_baz );
+  if( foo!=_foo || bar !=_bar || baz != _baz ) {
+    G_pd->system->logToConsole( "Got unaligned pointers %p, %p, and %p. Aligned to %p, %p, and %p. sz=%zu",
+                                _foo, _bar, _baz, foo, bar, _baz, sz );
+  }
+
+  G_pd->system->resetElapsedTime();
+  asm volatile( "dsb SY" );
+  for( size_t i = 0; i < iters; ++i ) {
+    stream_sum( foo, bar, baz, sz/sizeof(float) );
+  }
+  asm volatile( "dsb ST" );
+  float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
+
+  G_pd->system->realloc( _baz, 0 );
+  G_pd->system->realloc( _bar, 0 );
+  G_pd->system->realloc( _foo, 0 );
+
+  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
+  float cycles          = elapsed_sec * G_freq_hz;
+  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+
+  char * buf;
+
+  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+
+  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
+
+  G_pd->system->realloc( buf, 0 );
+}
+
+static void
+run_stream_triad( void )
+{
+  size_t sz    = 4ul * 1024ul * 1024ul;
+  size_t iters = 2;
+
+  float * _foo = G_pd->system->realloc( NULL, sz );
+  if( !_foo ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * _bar = G_pd->system->realloc( NULL, sz );
+  if( !_bar ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * _baz = G_pd->system->realloc( NULL, sz );
+  if( !_baz ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * foo = (float*)align_ptr_up( (intptr_t)_foo, alignof(float) );
+  float * bar = (float*)align_ptr_up( (intptr_t)_bar, alignof(float) );
+  float * baz = (float*)align_ptr_up( (intptr_t)_baz, alignof(float) );
+
+  // shrink size to account for alignment that we had to shave off
+  sz -= MAX( MAX( foo-_foo, bar-_bar ), baz-_baz );
+  if( foo!=_foo || bar !=_bar || baz != _baz ) {
+    G_pd->system->logToConsole( "Got unaligned pointers %p, %p, and %p. Aligned to %p, %p, and %p. sz=%zu",
+                                _foo, _bar, _baz, foo, bar, _baz, sz );
+  }
+
+  G_pd->system->resetElapsedTime();
+  asm volatile( "dsb SY" );
+  for( size_t i = 0; i < iters; ++i ) {
+    stream_triad( foo, bar, baz, 3.14f, sz/sizeof(float) );
+  }
+  asm volatile( "dsb ST" );
+  float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
+
+  G_pd->system->realloc( _baz, 0 );
+  G_pd->system->realloc( _bar, 0 );
+  G_pd->system->realloc( _foo, 0 );
+
+  float ops             = sz/sizeof(float)*iters;
+  float mflops          = ops/elapsed_sec/1000/1000;
+  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
+  float cycles          = elapsed_sec * G_freq_hz;
+  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+
+  char * buf;
+
+  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+
+  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
+
+  G_pd->system->formatString( &buf, "mflops: %0.3f", (double)mflops );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 120 );
 
   G_pd->system->realloc( buf, 0 );
 }
@@ -174,16 +352,25 @@ update( void * usr )
   }
 
   // display a menu and run the selected test
-  uint32_t x_sz  = 75;
+  uint32_t x_sz  = 60;
   uint32_t x_off = 0;
 
-  G_pd->graphics->drawText( "memcpy", strlen( "memcpy" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "cpy", strlen( "cpy" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "fast_cpy", strlen( "fast_cpy" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "fcpy", strlen( "fcpy" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "strm_cpy", strlen( "strm_cpy" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "scpy", strlen( "scpy" ), kASCIIEncoding, x_off, 0 );
+  x_off += x_sz;
+
+  G_pd->graphics->drawText( "sscale", strlen( "sscale" ), kASCIIEncoding, x_off, 0 );
+  x_off += x_sz;
+
+  G_pd->graphics->drawText( "ssum", strlen( "ssum" ), kASCIIEncoding, x_off, 0 );
+  x_off += x_sz;
+
+  G_pd->graphics->drawText( "striad", strlen( "striad" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
   G_pd->graphics->drawLine( G_selected*x_sz, 18, G_selected*x_sz+x_sz - 4, 18, 2, kColorBlack );
@@ -199,6 +386,18 @@ update( void * usr )
 
   if( G_selected==2 ) {
     run_stream_copy();
+  }
+
+  if( G_selected==3 ) {
+    run_stream_scale();
+  }
+
+  if( G_selected==4 ) {
+    run_stream_sum();
+  }
+
+  if( G_selected==5 ) {
+    run_stream_triad();
   }
 
   return 1;
@@ -315,7 +514,7 @@ eventHandler( PlaydateAPI*  playdate,
     G_pd = playdate;
 
     G_freq_hz = estimate_clock_hz();
-    G_pd->system->logToConsole( "freq_mhz: %f\n", G_freq_hz * 0.001f * 0.001f );
+    G_pd->system->logToConsole( "freq_mhz: %f\n", (double)(G_freq_hz * 0.001f * 0.001f) );
 
     /* Update callback is called at the speed required to hit refresh rate.
 
