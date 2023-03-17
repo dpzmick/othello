@@ -263,7 +263,7 @@ pick_next_move( game_table_t * gt,
 
   // perform evaluation 100 times on each loop
   // some of what we pick will stick around
-  for( size_t trial = 0; trial < 5000; ++trial ) {
+  for( size_t trial = 0; trial < 1000; ++trial ) {
     /* printf("-----TRIAL %zu\n", trial); */
     /* print_tree( gt, current_board, next_player, 0 ); */
 

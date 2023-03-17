@@ -1,7 +1,7 @@
 all: device simulator pdc test
 
-test: test.c
-	gcc test.c ../unit.c -O2 -o test
+test: test.c lib.c
+	gcc test.c lib.c ../unit.c -O2 -o test
 
 HEAP_SIZE      = 8388208
 STACK_SIZE     = 61800
@@ -19,7 +19,7 @@ $(error SDK path not found; set ENV value PLAYDATE_SDK_PATH)
 endif
 
 # List C source files here
-SRC = main.c
+SRC = main.c lib.c
 
 # List all user directories here
 UINCDIR =
