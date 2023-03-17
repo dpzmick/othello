@@ -34,6 +34,12 @@ stream_scale( float const * restrict a,
               size_t                 n );
 
 void
+stream_scale2( float const * restrict a,
+               float * restrict       b,
+               float                  q,
+               size_t                 n );
+
+void
 stream_sum( float const * restrict a,
             float const * restrict b,
             float * restrict       c,

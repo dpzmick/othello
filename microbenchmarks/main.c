@@ -180,7 +180,7 @@ run_stream_scale( void )
   G_pd->system->resetElapsedTime();
   asm volatile( "dsb SY" );
   for( size_t i = 0; i < iters; ++i ) {
-    stream_scale( foo, bar, 3.14f, sz/sizeof(float) );
+    stream_scale2( foo, bar, 3.14f, sz/sizeof(float) );
   }
   asm volatile( "dsb ST" );
   float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
