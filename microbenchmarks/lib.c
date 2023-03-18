@@ -287,51 +287,6 @@ stream_scale2( float const * restrict a,
 #endif
 }
 
-/* void */
-/* stream_scale2( float const * restrict a, */
-/*                float * restrict       b, */
-/*                float                  q, */
-/*                size_t                 n ) */
-/* { */
-/*   // NOTE: this is not any faster */
-/*   // so fpu cannot multiply faster than ram? */
-/*   // FIXME work through that and make sure these numbers all add up */
-
-/* #ifdef TARGET_PLAYDATE */
-/*   size_t i = 0; */
-
-/*   for(; i < n ; i += 2 ) { */
-/*     if( n-i > 2 ) break; */
-
-/*     float const * _a = a+i; */
-/*     float *       _b = b+i; */
-
-/*     asm volatile( "vldmia %[ptr]!, {s1-s2}" */
-/*                   : */
-/*                   : [ptr] "r"(_a) */
-/*                   : "s0",  "s1", */
-/*                     "cc" ); */
-
-/*     asm volatile( "vmul.f32 %[q], s1, s1" :: [q] "w"(q) : "s0", "cc" ); */
-/*     asm volatile( "vmul.f32 %[q], s2, s2" :: [q] "w"(q) : "s1", "cc" ); */
-
-/*     asm volatile( "vstmia %[ptr]!, {s1-s2}" */
-/*                   : */
-/*                   : [ptr] "r"(_b) */
-/*                   : "memory", "cc" ); */
-/*   } */
-
-/*   for( ; i < n; ++i ) { */
-/*     float const * _a = a+i; */
-/*     float *       _b = b+i; */
-
-/*     // compiler moves the cmp ahead of the str, why? */
-
-/*     *_b = q * *_a; */
-/*   } */
-/* #endif */
-/* } */
-
 // this is a bit slower that stream_copy
 // so I guess adds are slowish?
 //
