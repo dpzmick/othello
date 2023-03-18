@@ -94,7 +94,9 @@ stream_copy2( float const * restrict a,
               size_t                 n,
               PlaydateAPI *          pd )
 {
-#ifdef TARGET_PLAYDATE
+#ifndef TARGET_PLAYDATE
+  fast_copy( (uint8_t const*)a, (uint8_t*)b, n*4 );
+#else
   float const * const ed = a+n;
 
   /* pd->system->logToConsole( "start" ); */
@@ -158,8 +160,6 @@ stream_copy2( float const * restrict a,
 
     /* pd->system->logToConsole( "a=%p, ed=%p, b=%p", a, ed, b ); */
   }
-#else
-  fast_copy( (uint8_t const*)a, (uint8_t*)b, n*4 );
 #endif
 }
 
@@ -240,7 +240,7 @@ stream_scale2( float const * restrict a,
 
   float const * ed = a+n; // last element
 
-  // first load the top of the array into register s0 (our history register)
+  // first load the top of the array into register s2,s3 (our "ahead" registers)
   // this instruction increments (a)
   asm volatile( "vldmia %[ptr]!, {s2,s3}"
                 : [ptr] "+r"(a)
