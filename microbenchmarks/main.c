@@ -123,13 +123,27 @@ run_stream_copy( void )
                                 _foo, _bar, foo, bar, sz );
   }
 
+  for( size_t i = 0; i < sz/4; ++i ) {
+    foo[i] = i;
+    bar[i] = 12;
+  }
+
   G_pd->system->resetElapsedTime();
   asm volatile( "dsb SY" );
   for( size_t i = 0; i < iters; ++i ) {
-    stream_copy2( foo, bar, sz/sizeof(float) );
+    stream_copy2( foo, bar, sz/sizeof(float), G_pd );
   }
   asm volatile( "dsb ST" );
   float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
+
+  if( 0!=memcmp( foo, bar, sz ) ) {
+    char const * failed = "failed";
+    G_pd->graphics->drawText( failed, strlen( failed ), kASCIIEncoding, 200, 40 );
+
+    for( size_t i = 0; i < 4; ++i ) {
+      G_pd->system->logToConsole( "[%d]: %f=%f", (int)i, (double)foo[i], (double)bar[i] );
+    }
+  }
 
   G_pd->system->realloc( _bar, 0 );
   G_pd->system->realloc( _foo, 0 );
@@ -152,41 +166,57 @@ run_stream_copy( void )
 static void
 run_stream_scale( void )
 {
-  size_t sz    = 4ul * 1024ul * 1024ul;
+  static float scale_output[1024ul * 1024ul];
+  static float scale_q = 3.14f;
+  static bool  init    = 0;
+
+  if( !init ) {
+    for( size_t i = 0; i < ARRAY_SIZE( scale_output ); ++i ) {
+      scale_output[i] = scale_q * (float)i;
+    }
+    init = true;
+  }
+
+  size_t sz    = sizeof( scale_output );
   size_t iters = 2;
 
-  float * _foo = G_pd->system->realloc( NULL, sz );
-  if( !_foo ) {
+  // assume allocation is aligned
+
+  float * foo = G_pd->system->realloc( NULL, sz );
+  if( !foo ) {
     G_pd->system->logToConsole( "Allocation failed" );
     return;
   }
 
-  float * _bar = G_pd->system->realloc( NULL, sz );
-  if( !_bar ) {
+  float * bar = G_pd->system->realloc( NULL, sz );
+  if( !bar ) {
     G_pd->system->logToConsole( "Allocation failed" );
     return;
   }
 
-  float * foo = (float*)align_ptr_up( (intptr_t)_foo, alignof(float) );
-  float * bar = (float*)align_ptr_up( (intptr_t)_bar, alignof(float) );
-
-  // shrink size to account for alignment that we had to shave off
-  sz -= MAX( foo-_foo, bar-_bar );
-  if( foo!=_foo || bar !=_bar ) {
-    G_pd->system->logToConsole( "Got unaligned pointers %p and %p. Aligned to %p and %p. sz=%zu",
-                                _foo, _bar, foo, bar, sz );
+  for( size_t i = 0; i < ARRAY_SIZE( scale_output ); ++i ) {
+    foo[i] = (float)i;
   }
 
   G_pd->system->resetElapsedTime();
   asm volatile( "dsb SY" );
   for( size_t i = 0; i < iters; ++i ) {
-    stream_scale2( foo, bar, 3.14f, sz/sizeof(float) );
+    stream_scale2( foo, bar, scale_q, sz/sizeof(float) );
   }
   asm volatile( "dsb ST" );
   float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
 
-  G_pd->system->realloc( _bar, 0 );
-  G_pd->system->realloc( _foo, 0 );
+  G_pd->system->realloc( bar, 0 );
+  G_pd->system->realloc( foo, 0 );
+
+  if( 0!=memcmp( scale_output, bar, sz ) ) {
+    char const * failed = "failed";
+    G_pd->graphics->drawText( failed, strlen( failed ), kASCIIEncoding, 200, 40 );
+
+    for( size_t i = sz/4-4; i < sz/4; ++i ) {
+      G_pd->system->logToConsole( "[%d]: %f=%f", (int)i, (double)scale_output[i], (double)bar[i] );
+    }
+  }
 
   float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
   float cycles          = elapsed_sec * G_freq_hz;
@@ -332,7 +362,7 @@ run_stream_triad( void )
   G_pd->system->realloc( buf, 0 );
 }
 
-uint32_t G_selected = 0;
+uint32_t G_selected = 3;
 
 static int
 update( void * usr )

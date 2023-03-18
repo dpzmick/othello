@@ -40,3 +40,7 @@ ULIBDIR =
 ULIBS =
 
 include $(SDK)/C_API/buildsupport/common.mk
+
+$(OBJDIR)/%.s : %.c | OBJDIR DEPDIR
+	mkdir -p `dirname $@`
+	$(CC) -c -S -fverbose-asm $(CPFLAGS) -I . $(INCDIR) $< -o $@

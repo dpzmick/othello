@@ -1,7 +1,12 @@
 #include "lib.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#if defined(TARGET_PLAYDATE)
+#include "pd_api.h"
+#endif
 
 // this isn't stricly the standard "stream" benchmark
 // but the stdlib memcpy was beating a[i] = b[i]
@@ -83,149 +88,89 @@ stream_copy( float const * restrict a,
   }
 }
 
-// this is the fastest copy because the vector instructions
-// seem to be able to get more loads and stores going
-// somehow
 void
 stream_copy2( float const * restrict a,
               float * restrict       b,
-              size_t                 n )
+              size_t                 n,
+              PlaydateAPI *          pd )
 {
 #ifdef TARGET_PLAYDATE
-  // FPU has 32 registers
-  size_t i = 0;
+  float const * const ed = a+n;
 
-// NOTE: the 32 register version should not be any faster than the 2 register
-// version? The memory bus is 64 bit
-//
-// with all registers enabled, getting 13ish MiB/s
-// with 4 registers only, getting 13.5ish MiB/s
-// FIXME try with 2?
-//
-// feels like there's maybe more room to go here? but at least we're probably
-// saturating the memory bus.
+  /* pd->system->logToConsole( "start" ); */
+  /* pd->system->logToConsole( "a=%p, ed=%p, b=%p", a, ed, b ); */
+
+  /* Adding additional copies does not seem to make a difference, but using the
+     fancy loop below does seem to help with copy performance by a _very_ small
+     amount. */
+
 #if 0
-  for(; i < n ; i += 32 ) {
-    if( n-i > 32 ) break;
+  while( 1 ) {
+    if( ed-a < 2 ) break; // less than two elements?
 
-    float const * _a = a+i;
-    float *       _b = b+i;
+    // using write-back to update a pointer
+    asm volatile( "vldmia %[ptr]!, {s0, s1}"
+                  : [ptr] "+r"(a)
+                  :: "s0", "s1", "cc" );
 
-    asm volatile( "vldmia %[ptr]!, {s0-s31}"
-                  :
-                  : [ptr] "r"(_a)
-                  : "s0",  "s1",  "s2",  "s3",
-                    "s4",  "s5",  "s6",  "s7",
-                    "s8",  "s9",  "s10", "s11",
-                    "s12", "s13", "s14", "s15",
-                    "s16", "s17", "s18", "s19",
-                    "s20", "s21", "s22", "s23",
-                    "s24", "s25", "s26", "s27",
-                    "s28", "s29", "s30", "s31",
-                    "cc" );
+    // likewise, using write-back to update b pointer
+    asm volatile( "vstmia %[ptr]!, {s0, s1}"
+                  : [ptr] "+r"(b)
+                  :: "memory", "cc" );
 
-    asm volatile( "vstmia %[ptr]!, {s0-s31}"
-                  :
-                  : [ptr] "r"(_b)
-                  : "memory", "cc" );
-  }
-
-  for(; i < n ; i += 16 ) {
-    if( n-i > 16 ) break;
-
-    float const * _a = a+i;
-    float *       _b = b+i;
-
-    asm volatile( "vldmia %[ptr]!, {s0-s15}"
-                  :
-                  : [ptr] "r"(_a)
-                  : "s0",  "s1",  "s2",  "s3",
-                    "s4",  "s5",  "s6",  "s7",
-                    "s8",  "s9",  "s10", "s11",
-                    "s12", "s13", "s14", "s15",
-                    "cc" );
-
-    asm volatile( "vstmia %[ptr]!, {s0-s15}"
-                  :
-                  : [ptr] "r"(_b)
-                  : "memory", "cc" );
-  }
-
-  for(; i < n ; i += 8 ) {
-    if( n-i > 8 ) break;
-
-    float const * _a = a+i;
-    float *       _b = b+i;
-
-    asm volatile( "vldmia %[ptr]!, {s0-s7}"
-                  :
-                  : [ptr] "r"(_a)
-                  : "s0",  "s1",  "s2",  "s3",
-                    "s4",  "s5",  "s6",  "s7",
-                    "cc" );
-
-    asm volatile( "vstmia %[ptr]!, {s0-s7}"
-                  :
-                  : [ptr] "r"(_b)
-                  : "memory", "cc" );
+    /* pd->system->logToConsole( "a=%p, ed=%p, b=%p", a, ed, b ); */
   }
 #endif
 
-  for(; i < n ; i += 4 ) {
-    if( n-i > 4 ) break;
+  /* Disassembly of section .text.stream_copy2:
 
-    float const * _a = a+i;
-    float *       _b = b+i;
+     600014d0 <stream_copy2>:
+     600014d0:       eb00 0282       add.w   r2, r0, r2, lsl #2
+     600014d4:       4290            cmp     r0, r2
+     600014d6:       d805            bhi.n   600014e4 <stream_copy2+0x14>
+     600014d8:       ecb0 0a01       vldmia  r0!, {s0}
+     600014dc:       eca1 0a01       vstmia  r1!, {s0}
+     600014e0:       4282            cmp     r2, r0
+     600014e2:       d2f9            bcs.n   600014d8 <stream_copy2+0x8>
+     600014e4:       4770            bx      lr
+     600014e6:       bf00            nop
 
-    asm volatile( "vldmia %[ptr]!, {s0-s3}"
-                  :
-                  : [ptr] "r"(_a)
-                  : "s0",  "s1",  "s2",  "s3",
-                    "cc" );
+     Pretty clean?
+   */
 
-    asm volatile( "vstmia %[ptr]!, {s0-s3}"
-                  :
-                  : [ptr] "r"(_b)
-                  : "memory", "cc" );
-  }
+  while( 1 ) {
+    if( a > ed ) break;
 
-  for(; i < n ; i += 2 ) {
-    if( n-i > 2 ) break;
-
-    float const * _a = a+i;
-    float *       _b = b+i;
-
-    asm volatile( "vldmia %[ptr]!, {s0-s1}"
-                  :
-                  : [ptr] "r"(_a)
-                  : "s0",  "s1",
-                    "cc" );
-
-    asm volatile( "vstmia %[ptr]!, {s0-s1}"
-                  :
-                  : [ptr] "r"(_b)
-                  : "memory", "cc" );
-  }
-
-  for( ; i < n; ++i ) {
-    float const * _a = a+i;
-    float *       _b = b+i;
-
+    // using write-back to update a pointer
+    //
+    // this asm technically doesn't need the volatile marker
     asm volatile( "vldmia %[ptr]!, {s0}"
-                  :
-                  : [ptr] "r"(_a)
-                  : "s0", "cc" );
+                  : [ptr] "+r"(a)
+                  :: "s0", "cc" );
 
+    // likewise, using write-back to update b pointer
+    //
+    // but this one does require volatile, just plain "memory" isn't strong
+    // enough to keep it in
     asm volatile( "vstmia %[ptr]!, {s0}"
-                  :
-                  : [ptr] "r"(_b)
-                  : "memory", "cc" );
-  }
+                  : [ptr] "+r"(b)
+                  :: "memory", "cc" );
 
+    /* pd->system->logToConsole( "a=%p, ed=%p, b=%p", a, ed, b ); */
+  }
+#else
+  fast_copy( (uint8_t const*)a, (uint8_t*)b, n*4 );
 #endif
 }
 
-// this is the same speed as normal copy
+// This should always run at the same speed as a normal copy.
+//
+// The naive direct implementation at O2 is getting 0.066 bytes per cycle.
+// But the fastest copy I can do is getting 0.067 bytes per cycle!
+//
+// This is _tragic_ and must be futher optimized.
+//
+// Naive version compiles to:
 //
 // Disassembly of section .text.stream_scale:
 // 60001440 <stream_scale>:
@@ -238,6 +183,9 @@ stream_copy2( float const * restrict a,
 // 60001454:       d1f7            bne.n   60001446 <stream_scale+0x6>
 // 60001456:       4770            bx      lr
 //
+//
+// Which is very close to what we probably want
+
 void
 stream_scale( float const * restrict a,
               float * restrict       b,
@@ -255,45 +203,134 @@ stream_scale2( float const * restrict a,
                float                  q,
                size_t                 n )
 {
-  // NOTE: this is not any faster
-  // so fpu cannot multiply faster than ram?
-  // FIXME work through that and make sure these numbers all add up
+#ifndef TARGET_PLAYDATE
+  stream_scale( a, b, q, n );
+#else
 
-#ifdef TARGET_PLAYDATE
-  size_t i = 0;
+  // need to make sure that the fmul latency doesn't stall
+  // our memory operations.
+  // If we're doing
+  //
+  // load
+  // mul
+  // store
+  //
+  // we aren't getting the store started quickly enough to fully saturate memory
+  //
+  // if we instead can somehow do
+  // load
+  // store
+  // mul
+  // mul
+  // ...
+  //
+  // so that the mul runs in parallel with the memory operations, we're in a
+  // better spot.
+  //
+  // Knowing how far ahead we need to fill the pipeline is a bit tricky but this
+  // seems to be working with a distance of 2. Ideally the instructio scheduler
+  // would be doing this for us, but it seems not to be kicking in and getting
+  // it.
+  //
+  // Compiler was unable to generate the code I wanted with a variety of coaxes,
+  // so have to write this is psudeo-asm too.
+  //
+  // This code sits solidly at 0.067 bytes per cycle, assuming I calculated that
+  // correctly. Is that good? No idea
 
-  for(; i < n ; i += 2 ) {
-    if( n-i > 2 ) break;
+  float const * ed = a+n; // last element
 
-    float const * _a = a+i;
-    float *       _b = b+i;
+  // first load the top of the array into register s0 (our history register)
+  // this instruction increments (a)
+  asm volatile( "vldmia %[ptr]!, {s2,s3}"
+                : [ptr] "+r"(a)
+                :: "s2", "s3", "cc" );
 
-    asm volatile( "vldmia %[ptr]!, {s1-s2}"
-                  :
-                  : [ptr] "r"(_a)
-                  : "s0",  "s1",
-                    "cc" );
+  while( 1 ) {
+    // check if we can load two more elements
+    bool last_load = (ed-a) < 2;
 
-    asm volatile( "vmul.f32 %[q], s1, s1" :: [q] "w"(q) : "s0", "cc" );
-    asm volatile( "vmul.f32 %[q], s2, s2" :: [q] "w"(q) : "s1", "cc" );
+    // multiply q*{s2,s3} -> {s0,s1}
+    asm volatile( "vmul.f32 s0, %[q], s2"
+                  :: [q] "w"(q)
+                  : "s0", "s2", "cc" );
 
-    asm volatile( "vstmia %[ptr]!, {s1-s2}"
-                  :
-                  : [ptr] "r"(_b)
-                  : "memory", "cc" );
+    asm volatile( "vmul.f32 s1, %[q], s3"
+                  :: [q] "w"(q)
+                  : "s1", "s3", "cc" );
+
+    if( !last_load ) { // need space for two elements
+      // load a->{s2,s3}
+      asm volatile( "vldmia %[ptr]!, {s2, s3}"
+                    : [ptr] "+r"(a)
+                    :: "s2", "s3", "cc" );
+    }
+
+    // store {s0,s1}->b
+    asm volatile( "vstmia %[ptr]!, {s0,s1}"
+                  : [ptr] "+r"(b)
+                  :: "memory", "cc" );
+
+    if( last_load ) break; // done loading, s2,s3 left undefined
   }
 
-  for( ; i < n; ++i ) {
-    float const * _a = a+i;
-    float *       _b = b+i;
+  // finish off the processing with straightforward loop
+  while( 1 ) {
+    if( a > ed ) break;
+    *b = q * *a;
 
-    // compiler moves the cmp ahead of the str, why?
-
-    *_b = q * *_a;
+    a += 1;
+    b += 1;
   }
 
+  // FIXME check the exit behavior for arrays not multiple of 2
 #endif
 }
+
+/* void */
+/* stream_scale2( float const * restrict a, */
+/*                float * restrict       b, */
+/*                float                  q, */
+/*                size_t                 n ) */
+/* { */
+/*   // NOTE: this is not any faster */
+/*   // so fpu cannot multiply faster than ram? */
+/*   // FIXME work through that and make sure these numbers all add up */
+
+/* #ifdef TARGET_PLAYDATE */
+/*   size_t i = 0; */
+
+/*   for(; i < n ; i += 2 ) { */
+/*     if( n-i > 2 ) break; */
+
+/*     float const * _a = a+i; */
+/*     float *       _b = b+i; */
+
+/*     asm volatile( "vldmia %[ptr]!, {s1-s2}" */
+/*                   : */
+/*                   : [ptr] "r"(_a) */
+/*                   : "s0",  "s1", */
+/*                     "cc" ); */
+
+/*     asm volatile( "vmul.f32 %[q], s1, s1" :: [q] "w"(q) : "s0", "cc" ); */
+/*     asm volatile( "vmul.f32 %[q], s2, s2" :: [q] "w"(q) : "s1", "cc" ); */
+
+/*     asm volatile( "vstmia %[ptr]!, {s1-s2}" */
+/*                   : */
+/*                   : [ptr] "r"(_b) */
+/*                   : "memory", "cc" ); */
+/*   } */
+
+/*   for( ; i < n; ++i ) { */
+/*     float const * _a = a+i; */
+/*     float *       _b = b+i; */
+
+/*     // compiler moves the cmp ahead of the str, why? */
+
+/*     *_b = q * *_a; */
+/*   } */
+/* #endif */
+/* } */
 
 // this is a bit slower that stream_copy
 // so I guess adds are slowish?
