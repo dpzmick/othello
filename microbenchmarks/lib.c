@@ -30,55 +30,6 @@ stream_copy( float const * restrict a,
   }
 }
 
-void
-stream_copy2( float const * restrict a,
-              float * restrict       b,
-              size_t                 n,
-              PlaydateAPI *          pd )
-{
-#ifndef TARGET_PLAYDATE
-  stream_copy( a, b, n );
-#else
-  float const * const ed = a+n;
-
-  // This verision seems to very slightly beats the naive one some of the time.
-  // Not entirely sure why.
-
-  while( 1 ) {
-    if( ed-a < 4 ) break;
-
-    // using write-back to update a pointer
-    asm volatile( "vldmia %[ptr]!, {s0, s1, s2, s3}"
-                  : [ptr] "+r"(a)
-                  :: "s0", "s1", "s2", "s3", "cc" );
-
-    // likewise, using write-back to update b pointer
-    asm volatile( "vstmia %[ptr]!, {s0, s1, s2, s3}"
-                  : [ptr] "+r"(b)
-                  :: "memory", "cc" );
-  }
-
-  while( 1 ) {
-    if( a > ed ) break;
-
-    // using write-back to update a pointer
-    //
-    // this asm technically doesn't need the volatile marker
-    asm volatile( "vldmia %[ptr]!, {s0}"
-                  : [ptr] "+r"(a)
-                  :: "s0", "cc" );
-
-    // likewise, using write-back to update b pointer
-    //
-    // but this one does require volatile, just plain "memory" isn't strong
-    // enough to keep it in
-    asm volatile( "vstmia %[ptr]!, {s0}"
-                  : [ptr] "+r"(b)
-                  :: "memory", "cc" );
-  }
-#endif
-}
-
 // This should always run at the same speed as a normal copy.
 //
 // The naive direct implementation at O2 is getting 0.066 bytes per cycle.
