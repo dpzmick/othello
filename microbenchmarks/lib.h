@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef struct PlaydateAPI PlaydateAPI;
+
 #define MAX( a, b ) ((a) < (b) ? (b) : (a))
 #define ARRAY_SIZE( a ) (sizeof(a)/sizeof(a[0]))
 
@@ -14,35 +16,15 @@ align_ptr_up( intptr_t ptr, intptr_t a )
 }
 
 void
-fast_copy( uint8_t const * restrict a,
-           uint8_t * restrict       b,
-           size_t                   n );
-
-void
 stream_copy( float const * restrict a,
              float * restrict       b,
              size_t                 n );
-
-typedef struct PlaydateAPI PlaydateAPI;
-
-void
-stream_copy2( float const * restrict a,
-              float * restrict       b,
-              size_t                 n,
-              PlaydateAPI *          pd );
 
 void
 stream_scale( float const * restrict a,
               float * restrict       b,
               float                  q,
               size_t                 n );
-
-
-void
-stream_scale2( float const * restrict a,
-               float * restrict       b,
-               float                  q,
-               size_t                 n );
 
 void
 stream_sum( float const * restrict a,

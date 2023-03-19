@@ -8,64 +8,6 @@
 #include "pd_api.h"
 #endif
 
-// this isn't stricly the standard "stream" benchmark
-// but the stdlib memcpy was beating a[i] = b[i]
-// so trying to optimize a bit to better understand the
-// architecture.
-//
-// this is tied with playdate stdlib
-void
-fast_copy( uint8_t const * restrict a,
-           uint8_t * restrict       b,
-           size_t                   n )
-{
-  uint8_t const * ed = a+n;
-
-  // peel off the front until we are aligned
-  while( a < ed ) {
-    // if we are aligned, break
-    if( ((size_t)a & 0x20) == 0 ) break;
-
-    // else copy as uint8_t
-    *b++ = *a++;
-  }
-
-  // do main body as "word" sized loads and stores
-  while( a < ed && ed-a > 8 ) {
-    uint32_t _a1 = *((uint32_t*)a);
-    *((uint32_t*)b) = _a1;
-
-    a += 4;
-    b += 4;
-  }
-
-  // peel 32 bit chunks off
-  // this is going to run on 32bit arm so a word is u32
-  while( a < ed && ed-a > 4 ) {
-    uint32_t _a = *((uint32_t*)a);
-    *((uint32_t*)b) = _a;
-
-    a += 4;
-    b += 4;
-  }
-
-  // finish up any funky sized tail
-  while( a < ed ) {
-    *b++ = *a++;
-  }
-}
-
-// could also try doing copies with DMA controller?
-//
-// could also try loading 4-8 values into registers then emitting the stores
-// since the memory bus may be wider that 32bit/to take advantage of cache
-// more effectively? need to read docs further
-
-// proper "stream" will run with floats and none of the fancy setup code.
-// assumes that the buffer is aligned
-//
-// this is a lil faster but must assume that the buffer is aligned
-//
 // Disassembly of section .text.stream_copy:
 //
 // 60000750 <stream_copy>:
@@ -81,7 +23,7 @@ fast_copy( uint8_t const * restrict a,
 void
 stream_copy( float const * restrict a,
              float * restrict       b,
-             size_t                  n )
+             size_t                 n )
 {
   for( size_t i = 0; i < n; ++i ) {
     b[i] = a[i];
@@ -95,50 +37,26 @@ stream_copy2( float const * restrict a,
               PlaydateAPI *          pd )
 {
 #ifndef TARGET_PLAYDATE
-  fast_copy( (uint8_t const*)a, (uint8_t*)b, n*4 );
+  stream_copy( a, b, n );
 #else
   float const * const ed = a+n;
 
-  /* pd->system->logToConsole( "start" ); */
-  /* pd->system->logToConsole( "a=%p, ed=%p, b=%p", a, ed, b ); */
+  // This verision seems to very slightly beats the naive one some of the time.
+  // Not entirely sure why.
 
-  /* Adding additional copies does not seem to make a difference, but using the
-     fancy loop below does seem to help with copy performance by a _very_ small
-     amount. */
-
-#if 0
   while( 1 ) {
-    if( ed-a < 2 ) break; // less than two elements?
+    if( ed-a < 4 ) break;
 
     // using write-back to update a pointer
-    asm volatile( "vldmia %[ptr]!, {s0, s1}"
+    asm volatile( "vldmia %[ptr]!, {s0, s1, s2, s3}"
                   : [ptr] "+r"(a)
-                  :: "s0", "s1", "cc" );
+                  :: "s0", "s1", "s2", "s3", "cc" );
 
     // likewise, using write-back to update b pointer
-    asm volatile( "vstmia %[ptr]!, {s0, s1}"
+    asm volatile( "vstmia %[ptr]!, {s0, s1, s2, s3}"
                   : [ptr] "+r"(b)
                   :: "memory", "cc" );
-
-    /* pd->system->logToConsole( "a=%p, ed=%p, b=%p", a, ed, b ); */
   }
-#endif
-
-  /* Disassembly of section .text.stream_copy2:
-
-     600014d0 <stream_copy2>:
-     600014d0:       eb00 0282       add.w   r2, r0, r2, lsl #2
-     600014d4:       4290            cmp     r0, r2
-     600014d6:       d805            bhi.n   600014e4 <stream_copy2+0x14>
-     600014d8:       ecb0 0a01       vldmia  r0!, {s0}
-     600014dc:       eca1 0a01       vstmia  r1!, {s0}
-     600014e0:       4282            cmp     r2, r0
-     600014e2:       d2f9            bcs.n   600014d8 <stream_copy2+0x8>
-     600014e4:       4770            bx      lr
-     600014e6:       bf00            nop
-
-     Pretty clean?
-   */
 
   while( 1 ) {
     if( a > ed ) break;
@@ -157,8 +75,6 @@ stream_copy2( float const * restrict a,
     asm volatile( "vstmia %[ptr]!, {s0}"
                   : [ptr] "+r"(b)
                   :: "memory", "cc" );
-
-    /* pd->system->logToConsole( "a=%p, ed=%p, b=%p", a, ed, b ); */
   }
 #endif
 }
@@ -197,98 +113,17 @@ stream_scale( float const * restrict a,
   }
 }
 
-void
-stream_scale2( float const * restrict a,
-               float * restrict       b,
-               float                  q,
-               size_t                 n )
-{
-#ifndef TARGET_PLAYDATE
-  stream_scale( a, b, q, n );
-#else
-
-  // need to make sure that the fmul latency doesn't stall
-  // our memory operations.
-  // If we're doing
-  //
-  // load
-  // mul
-  // store
-  //
-  // we aren't getting the store started quickly enough to fully saturate memory
-  //
-  // if we instead can somehow do
-  // load
-  // store
-  // mul
-  // mul
-  // ...
-  //
-  // so that the mul runs in parallel with the memory operations, we're in a
-  // better spot.
-  //
-  // Knowing how far ahead we need to fill the pipeline is a bit tricky but this
-  // seems to be working with a distance of 2. Ideally the instructio scheduler
-  // would be doing this for us, but it seems not to be kicking in and getting
-  // it.
-  //
-  // Compiler was unable to generate the code I wanted with a variety of coaxes,
-  // so have to write this is psudeo-asm too.
-  //
-  // This code sits solidly at 0.067 bytes per cycle, assuming I calculated that
-  // correctly. Is that good? No idea
-
-  float const * ed = a+n; // last element
-
-  // first load the top of the array into register s2,s3 (our "ahead" registers)
-  // this instruction increments (a)
-  asm volatile( "vldmia %[ptr]!, {s2,s3}"
-                : [ptr] "+r"(a)
-                :: "s2", "s3", "cc" );
-
-  while( 1 ) {
-    // check if we can load two more elements
-    bool last_load = (ed-a) < 2;
-
-    // multiply q*{s2,s3} -> {s0,s1}
-    asm volatile( "vmul.f32 s0, %[q], s2"
-                  :: [q] "w"(q)
-                  : "s0", "s2", "cc" );
-
-    asm volatile( "vmul.f32 s1, %[q], s3"
-                  :: [q] "w"(q)
-                  : "s1", "s3", "cc" );
-
-    if( !last_load ) { // need space for two elements
-      // load a->{s2,s3}
-      asm volatile( "vldmia %[ptr]!, {s2, s3}"
-                    : [ptr] "+r"(a)
-                    :: "s2", "s3", "cc" );
-    }
-
-    // store {s0,s1}->b
-    asm volatile( "vstmia %[ptr]!, {s0,s1}"
-                  : [ptr] "+r"(b)
-                  :: "memory", "cc" );
-
-    if( last_load ) break; // done loading, s2,s3 left undefined
-  }
-
-  // finish off the processing with straightforward loop
-  while( 1 ) {
-    if( a > ed ) break;
-    *b = q * *a;
-
-    a += 1;
-    b += 1;
-  }
-
-  // FIXME check the exit behavior for arrays not multiple of 2
-#endif
-}
-
-// this is a bit slower that stream_copy
-// so I guess adds are slowish?
+// Summing will required reading _two_ concurrent input streams
+// And writing one output.
+//
+// So vs 1 load and 1 store, we are now doing 2 loads and 1 store per loop.
+//
+// We should expect to see a performance hit roughly 1/3 of 0.067, so maybe
+// 0.022ish bytes per cycle
+//
+// But I'm getting 0.044, which doesn't make sense.
+// Does this mean there's more speed to be had in the previous?
+//
 //
 // 60000770 <stream_sum>:
 // 60000770:       b15b            cbz     r3, 6000078a <stream_sum+0x1a>
@@ -310,27 +145,23 @@ stream_sum( float const * restrict a,
   for( size_t i = 0; i < n; ++i ) {
     c[i] = a[i] + b[i];
   }
+
+  // I've learned my lesson on trying to speed these up
+  // just gonna leave this alone
 }
 
-// compiles to:
-//
-// 600008a0 <stream_triad.constprop.0>:
-// 600008a0:       b16b            cbz     r3, 600008be <stream_triad.constprop.0+0x1e>
-// 600008a2:       eddf 6a07       vldr    s13, [pc, #28]  ; 600008c0 <stream_triad.constprop.0+0x20>
-// 600008a6:       eb00 0383       add.w   r3, r0, r3, lsl #2
-// 600008aa:       ecf0 7a01       vldmia  r0!, {s15}
-// 600008ae:       ecb1 7a01       vldmia  r1!, {s14}
-// 600008b2:       4298            cmp     r0, r3
-// 600008b4:       eee7 7a26       vfma.f32        s15, s14, s13
-// 600008b8:       ece2 7a01       vstmia  r2!, {s15}
-// 600008bc:       d1f5            bne.n   600008aa <stream_triad.constprop.0+0xa>
-// 600008be:       4770            bx      lr
-// 600008c0:       4048f5c3        submi   pc, r8, r3, asr #11
-//
-// so we get the fma, as expected.
-// seeing 1.7ish mflops
-//
-// same speed as the adds
+// Disassembly of section .text.stream_triad:
+// 60001740 <stream_triad>:
+// 60001740:       b15b            cbz     r3, 6000175a <stream_triad+0x1a>
+// 60001742:       eb00 0383       add.w   r3, r0, r3, lsl #2
+// 60001746:       ecf0 7a01       vldmia  r0!, {s15}
+// 6000174a:       ecb1 7a01       vldmia  r1!, {s14}
+// 6000174e:       4298            cmp     r0, r3
+// 60001750:       eee7 7a00       vfma.f32        s15, s14, s0
+// 60001754:       ece2 7a01       vstmia  r2!, {s15}
+// 60001758:       d1f5            bne.n   60001746 <stream_triad+0x6>
+// 6000175a:       4770            bx      lr
+
 
 void
 stream_triad( float const * restrict a,
@@ -343,3 +174,9 @@ stream_triad( float const * restrict a,
     c[i] = a[i] + q*b[i];
   }
 }
+
+
+// still need to:
+// - understand dual issue float/int
+// - figure out at cache size and behavior
+// - do flops tests hitting cache

@@ -1,7 +1,7 @@
-all: device simulator pdc test
+all: device simulator pdc
 
-test: test.c lib.c
-	gcc test.c lib.c ../unit.c -O2 -o test
+# test: test.c lib.c
+# 	gcc test.c lib.c ../unit.c -O2 -o test
 
 HEAP_SIZE      = 8388208
 STACK_SIZE     = 61800

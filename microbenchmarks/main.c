@@ -36,62 +36,21 @@ run_memcpy( void )
   G_pd->system->realloc( bar, 0 );
   G_pd->system->realloc( foo, 0 );
 
-  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
-  float cycles          = elapsed_sec * G_freq_hz;
-  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+  // read once, write once
+  size_t bytes           = 2*sz*iters;
+  float  mib             = (float)bytes/1024.0f/1024.0f;
+  float  mib_per_sec     = mib/elapsed_sec;
+  float  cycles          = elapsed_sec * G_freq_hz;
+  float  bytes_per_cycle = ((float)bytes)/((float)cycles);
 
   char * buf;
 
   G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
-
-  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
-  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
-
   G_pd->system->realloc( buf, 0 );
-}
-
-static void
-run_fast_copy( void )
-{
-  size_t sz    = 4ul * 1024ul * 1024ul;
-  size_t iters = 2;
-
-  void * foo = G_pd->system->realloc( NULL, sz );
-  if( !foo ) {
-    G_pd->system->logToConsole( "Allocation failed" );
-    return;
-  }
-
-  void * bar = G_pd->system->realloc( NULL, sz );
-  if( !bar ) {
-    G_pd->system->logToConsole( "Allocation failed" );
-    return;
-  }
-
-  G_pd->system->resetElapsedTime();
-  asm volatile( "dsb SY" );
-  for( size_t i = 0; i < iters; ++i ) {
-    fast_copy( foo, bar, sz );
-  }
-  asm volatile( "dsb ST" );
-  float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
-
-  G_pd->system->realloc( bar, 0 );
-  G_pd->system->realloc( foo, 0 );
-
-  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
-  float cycles          = elapsed_sec * G_freq_hz;
-  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
-
-  char * buf;
-
-  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
-  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
 
   G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
-
   G_pd->system->realloc( buf, 0 );
 }
 
@@ -99,7 +58,7 @@ static void
 run_stream_copy( void )
 {
   size_t sz    = 4ul * 1024ul * 1024ul;
-  size_t iters = 2;
+  size_t iters = 8;
 
   float * _foo = G_pd->system->realloc( NULL, sz );
   if( !_foo ) {
@@ -131,7 +90,7 @@ run_stream_copy( void )
   G_pd->system->resetElapsedTime();
   asm volatile( "dsb SY" );
   for( size_t i = 0; i < iters; ++i ) {
-    stream_copy2( foo, bar, sz/sizeof(float), G_pd );
+    stream_copy( foo, bar, sz/sizeof(float) );
   }
   asm volatile( "dsb ST" );
   float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
@@ -148,37 +107,44 @@ run_stream_copy( void )
   G_pd->system->realloc( _bar, 0 );
   G_pd->system->realloc( _foo, 0 );
 
-  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
-  float cycles          = elapsed_sec * G_freq_hz;
-  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+  // read once, write once
+  size_t bytes           = 2*sz*iters;
+  float  mib             = (float)bytes/1024.0f/1024.0f;
+  float  mib_per_sec     = mib/elapsed_sec;
+  float  cycles          = elapsed_sec * G_freq_hz;
+  float  bytes_per_cycle = ((float)bytes)/((float)cycles);
 
   char * buf;
 
   G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+  G_pd->system->realloc( buf, 0 ); // formatstring seems to leak if i reuse this
 
   G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
-
   G_pd->system->realloc( buf, 0 );
+
+  G_pd->system->formatString( &buf, "Elapsed: %f", (double)elapsed_sec );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 120 );
+  G_pd->system->realloc( buf, 0 ); // formatString seems to leak if I reuse this
 }
+
+static float scale_output[1024ul * 1024ul];
+static float scale_q    = 3.14f;
+static bool  scale_init = 0;
 
 static void
 run_stream_scale( void )
 {
-  static float scale_output[1024ul * 1024ul];
-  static float scale_q = 3.14f;
-  static bool  init    = 0;
-
-  if( !init ) {
+  if( !scale_init ) {
     for( size_t i = 0; i < ARRAY_SIZE( scale_output ); ++i ) {
       scale_output[i] = scale_q * (float)i;
     }
-    init = true;
+    scale_init = true;
   }
 
   size_t sz    = sizeof( scale_output );
-  size_t iters = 2;
+  size_t iters = 8;
 
   // assume allocation is aligned
 
@@ -201,7 +167,7 @@ run_stream_scale( void )
   G_pd->system->resetElapsedTime();
   asm volatile( "dsb SY" );
   for( size_t i = 0; i < iters; ++i ) {
-    stream_scale2( foo, bar, scale_q, sz/sizeof(float) );
+    stream_scale( foo, bar, scale_q, sz/sizeof(float) );
   }
   asm volatile( "dsb ST" );
   float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
@@ -218,25 +184,42 @@ run_stream_scale( void )
     }
   }
 
-  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
-  float cycles          = elapsed_sec * G_freq_hz;
-  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+  // read once, write once
+  size_t bytes           = 2*sz*iters;
+  float  mib             = (float)bytes/1024.0f/1024.0f;
+  float  mib_per_sec     = mib/elapsed_sec;
+  float  cycles          = elapsed_sec * G_freq_hz;
+  float  bytes_per_cycle = ((float)bytes)/((float)cycles);
 
   char * buf;
 
   G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+  G_pd->system->realloc( buf, 0 ); // formatString seems to leak if I reuse this
 
   G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
-
   G_pd->system->realloc( buf, 0 );
+
+  G_pd->system->formatString( &buf, "Elapsed: %f", (double)elapsed_sec );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 120 );
+  G_pd->system->realloc( buf, 0 ); // formatString seems to leak if I reuse this
 }
 
 static void
 run_stream_sum( void )
 {
-  size_t sz    = 4ul * 1024ul * 1024ul;
+  static float sum_output[512ul * 1024ul];
+  static bool  init    = 0;
+
+  if( !init ) {
+    for( size_t i = 0; i < ARRAY_SIZE( sum_output ); ++i ) {
+      sum_output[i] = (float)i + (float)(i + 1);
+    }
+    init = true;
+  }
+
+  size_t sz    = sizeof(sum_output);
   size_t iters = 2;
 
   float * _foo = G_pd->system->realloc( NULL, sz );
@@ -268,6 +251,11 @@ run_stream_sum( void )
                                 _foo, _bar, _baz, foo, bar, _baz, sz );
   }
 
+  for( size_t i = 0; i < sz/4; ++i ) {
+    foo[i] = (float)i;
+    bar[i] = (float)(i+1);
+  }
+
   G_pd->system->resetElapsedTime();
   asm volatile( "dsb SY" );
   for( size_t i = 0; i < iters; ++i ) {
@@ -280,26 +268,29 @@ run_stream_sum( void )
   G_pd->system->realloc( _bar, 0 );
   G_pd->system->realloc( _foo, 0 );
 
-  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
-  float cycles          = elapsed_sec * G_freq_hz;
-  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+  // read twice, write once
+  size_t bytes           = 3*sz*iters;
+  float  mib             = (float)bytes/1024.0f/1024.0f;
+  float  mib_per_sec     = mib/elapsed_sec;
+  float  cycles          = elapsed_sec * G_freq_hz;
+  float  bytes_per_cycle = ((float)bytes)/((float)cycles);
 
   char * buf;
 
   G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+  G_pd->system->realloc( buf, 0 );
 
   G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
-
   G_pd->system->realloc( buf, 0 );
 }
 
 static void
 run_stream_triad( void )
 {
-  size_t sz    = 4ul * 1024ul * 1024ul;
-  size_t iters = 2;
+  size_t sz    = 2ul * 1024ul * 1024ul;
+  size_t iters = 8;
 
   float * _foo = G_pd->system->realloc( NULL, sz );
   if( !_foo ) {
@@ -342,27 +333,31 @@ run_stream_triad( void )
   G_pd->system->realloc( _bar, 0 );
   G_pd->system->realloc( _foo, 0 );
 
-  float ops             = sz/sizeof(float)*iters;
-  float mflops          = ops/elapsed_sec/1000/1000;
-  float mib_per_sec     = ((float)(sz*iters))/elapsed_sec/1024.0f/1024.0f;
-  float cycles          = elapsed_sec * G_freq_hz;
-  float bytes_per_cycle = ((float)(sz*iters))/((float)cycles);
+  // read twice, write once
+  float  ops             = sz/sizeof(float)*iters;
+  float  mflops          = ops/1000.0f/1000.0f/elapsed_sec;
+  size_t bytes           = 3*sz*iters;
+  float  mib             = (float)bytes/1024.0f/1024.0f;
+  float  mib_per_sec     = mib/elapsed_sec;
+  float  cycles          = elapsed_sec * G_freq_hz;
+  float  bytes_per_cycle = ((float)bytes)/((float)cycles);
 
   char * buf;
 
   G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+  G_pd->system->realloc( buf, 0 );
 
   G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
+  G_pd->system->realloc( buf, 0 );
 
   G_pd->system->formatString( &buf, "mflops: %0.3f", (double)mflops );
   G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 120 );
-
   G_pd->system->realloc( buf, 0 );
 }
 
-uint32_t G_selected = 3;
+uint32_t G_selected = 4;
 
 static int
 update( void * usr )
@@ -382,52 +377,32 @@ update( void * usr )
   }
 
   // display a menu and run the selected test
-  uint32_t x_sz  = 60;
+  uint32_t x_sz  = 40;
   uint32_t x_off = 0;
 
   G_pd->graphics->drawText( "cpy", strlen( "cpy" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "fcpy", strlen( "fcpy" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "cpy", strlen( "cpy" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "scpy", strlen( "scpy" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "scl", strlen( "scl" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "sscale", strlen( "sscale" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "sum", strlen( "sum" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "ssum", strlen( "ssum" ), kASCIIEncoding, x_off, 0 );
-  x_off += x_sz;
-
-  G_pd->graphics->drawText( "striad", strlen( "striad" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "tri", strlen( "tri" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
   G_pd->graphics->drawLine( G_selected*x_sz, 18, G_selected*x_sz+x_sz - 4, 18, 2, kColorBlack );
 
-  // run the test
-  if( G_selected==0 ) {
-    run_memcpy();
-  }
-
-  if( G_selected==1 ) {
-    run_fast_copy();
-  }
-
-  if( G_selected==2 ) {
-    run_stream_copy();
-  }
-
-  if( G_selected==3 ) {
-    run_stream_scale();
-  }
-
-  if( G_selected==4 ) {
-    run_stream_sum();
-  }
-
-  if( G_selected==5 ) {
-    run_stream_triad();
+  switch( G_selected ) {
+    case 0: run_memcpy(); break;
+    case 1: run_stream_copy(); break;
+    case 2: run_stream_scale(); break;
+    case 3: run_stream_sum(); break;
+    case 4: run_stream_triad(); break;
   }
 
   return 1;
