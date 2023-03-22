@@ -357,7 +357,75 @@ run_stream_triad( void )
   G_pd->system->realloc( buf, 0 );
 }
 
-uint32_t G_selected = 4;
+static void
+run_stride( void )
+{
+  const static size_t sz = 1024ul * 1024ul;
+
+  uint8_t * foo = G_pd->system->realloc( NULL, sz );
+  if( !foo ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  memset( foo, 0, sz );
+
+  const static size_t n_res = 256; // max I can support
+  float results[n_res];
+  size_t result_idx = 0;
+
+  memset( results, 0, sizeof(results) );
+
+  // we want to determine how much data we load "for free"
+  // after we load from some part of an array.
+  //
+  // if our reads stay in the cache, they should be much faster
+
+  size_t stride = 1;
+  while( 1 ) {
+    G_pd->system->resetElapsedTime();
+    asm volatile( "dsb SY" ::: "memory" );
+    stride_test( foo, sz, stride );
+    asm volatile( "dsb SY" ::: "memory" );
+    float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
+
+    /* results[result_idx++] = sz/elapsed_sec/1024.0f/1024.0f; */
+    results[result_idx++] = elapsed_sec;
+
+    G_pd->system->logToConsole( "stride: %d, elapsed: %f sec, bw: %f MiB/s", (int)stride, (double)elapsed_sec, (double)results[result_idx-1] );
+
+    stride += 1;
+
+    if( stride > 256 ) break;
+  }
+
+  G_pd->system->realloc( foo, 0 );
+
+  float max = 0;
+  for( size_t i = 0; i < result_idx; ++i ) {
+    max = MAX( results[i], max );
+  }
+
+  size_t height = 160;
+  size_t width  = 340;
+  float  x_off  = (float)width/result_idx;
+  G_pd->graphics->drawRect( 20, 40, width, height, kColorBlack );
+
+  for( size_t i = 0; i < result_idx; ++i ) {
+    float scale = (float)height / (float)max;
+    float p = -scale * results[i];
+
+    G_pd->graphics->fillTriangle( /* x1 */ 20 + i*x_off - 2,
+                                  /* y1 */ 40+height + p - 2,
+                                  /* x2 */ 20 + i*x_off + 2,
+                                  /* y2 */ 40+height + p - 2,
+                                  /* x3 */ 20 + i*x_off,
+                                  /* y3 */ 40+height + p + 2,
+                                  kColorBlack );
+  }
+}
+
+uint32_t G_selected = 5;
 
 static int
 update( void * usr )
@@ -395,6 +463,9 @@ update( void * usr )
   G_pd->graphics->drawText( "tri", strlen( "tri" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
+  G_pd->graphics->drawText( "str", strlen( "str" ), kASCIIEncoding, x_off, 0 );
+  x_off += x_sz;
+
   G_pd->graphics->drawLine( G_selected*x_sz, 18, G_selected*x_sz+x_sz - 4, 18, 2, kColorBlack );
 
   switch( G_selected ) {
@@ -403,6 +474,7 @@ update( void * usr )
     case 2: run_stream_scale(); break;
     case 3: run_stream_sum(); break;
     case 4: run_stream_triad(); break;
+    case 5: run_stride(); break;
   }
 
   return 1;

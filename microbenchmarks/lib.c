@@ -126,8 +126,18 @@ stream_triad( float const * restrict a,
   }
 }
 
+void
+stride_test( uint8_t * restrict a,
+             size_t             sz,
+             size_t             stride )
+{
+  for( size_t i = 0; i < sz; i += stride ) {
+    a[i] = a[i] + a[i];
+  }
+}
+
 
 // still need to:
-// - understand dual issue float/int
 // - figure out at cache size and behavior
 // - do flops tests hitting cache
+// - understand dual issue float/int

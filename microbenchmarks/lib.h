@@ -38,3 +38,8 @@ stream_triad( float const * restrict a,
               float * restrict       c,
               float                  q,
               size_t                 n );
+
+void
+stride_test( uint8_t * restrict a,
+             size_t             sz,
+             size_t             stride );
