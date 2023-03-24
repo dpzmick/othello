@@ -358,6 +358,116 @@ run_stream_triad( void )
 }
 
 static void
+run_stream_triad_small( void )
+{
+  // cache is 8kib
+  // we want whole data to fit there
+  // and we're making 3 arrays
+  // make sure they fit by dividing by 4
+
+  size_t sz    = (8ul * 1024ul) / 4ul;
+  size_t iters = 8192;
+
+  float * _foo = G_pd->system->realloc( NULL, sz );
+  if( !_foo ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * _bar = G_pd->system->realloc( NULL, sz );
+  if( !_bar ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * _baz = G_pd->system->realloc( NULL, sz );
+  if( !_baz ) {
+    G_pd->system->logToConsole( "Allocation failed" );
+    return;
+  }
+
+  float * foo = (float*)align_ptr_up( (intptr_t)_foo, alignof(float) );
+  float * bar = (float*)align_ptr_up( (intptr_t)_bar, alignof(float) );
+  float * baz = (float*)align_ptr_up( (intptr_t)_baz, alignof(float) );
+
+  // shrink size to account for alignment that we had to shave off
+  sz -= MAX( MAX( foo-_foo, bar-_bar ), baz-_baz );
+  if( foo!=_foo || bar !=_bar || baz != _baz ) {
+    G_pd->system->logToConsole( "Got unaligned pointers %p, %p, and %p. Aligned to %p, %p, and %p. sz=%zu",
+                                _foo, _bar, _baz, foo, bar, _baz, sz );
+  }
+
+  G_pd->system->resetElapsedTime();
+  asm volatile( "dsb SY" );
+  for( size_t i = 0; i < iters; ++i ) {
+    stream_triad( foo, bar, baz, 3.14f, sz/sizeof(float) );
+  }
+  asm volatile( "dsb ST" );
+  float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
+
+  G_pd->system->realloc( _baz, 0 );
+  G_pd->system->realloc( _bar, 0 );
+  G_pd->system->realloc( _foo, 0 );
+
+  // read twice, write once
+  float  ops             = sz/sizeof(float)*iters;
+  float  mflops          = ops/1000.0f/1000.0f/elapsed_sec;
+  size_t bytes           = 3*sz*iters;
+  float  mib             = (float)bytes/1024.0f/1024.0f;
+  float  mib_per_sec     = mib/elapsed_sec;
+  float  cycles          = elapsed_sec * G_freq_hz;
+  float  bytes_per_cycle = ((float)bytes)/((float)cycles);
+
+  char * buf;
+
+  G_pd->system->formatString( &buf, "MiB/s: %0.3f", (double)mib_per_sec );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 );
+  G_pd->system->realloc( buf, 0 );
+
+  G_pd->system->formatString( &buf, "bytes/cycle: %0.3f", (double)bytes_per_cycle );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 );
+  G_pd->system->realloc( buf, 0 );
+
+  G_pd->system->formatString( &buf, "mflops: %0.3f", (double)mflops );
+  G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 120 );
+  G_pd->system->realloc( buf, 0 );
+}
+
+static void
+run_dual_issue( void )
+{
+  size_t iters = 1ul << 21ul;
+
+  G_pd->system->resetElapsedTime();
+  for( size_t i = 0; i < iters; ++i ) {
+    run_128ins();
+  }
+  float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
+
+  float ops_per_sec   = (((float)iters)/elapsed_sec) * 128;
+  float ops_per_cycle = ops_per_sec / G_freq_hz;
+
+  /* char * buf; */
+
+  /* G_pd->system->formatString( &buf, "Elapsed %0.3f", (double)elapsed_sec ); */
+  /* G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 ); */
+  /* G_pd->system->realloc( buf, 0 ); */
+
+  /* G_pd->system->formatString( &buf, "Clock: %0.3f", (double)G_freq_hz ); */
+  /* G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 ); */
+  /* G_pd->system->realloc( buf, 0 ); */
+
+  /* G_pd->system->formatString( &buf, "ops per cycle %0.3f", (double)ops_per_cycle ); */
+  /* G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 120 ); */
+  /* G_pd->system->realloc( buf, 0 ); */
+
+  G_pd->system->logToConsole( "elapsed %0.3fs, iters: %d ops/c: %0.3f",
+                              (double)elapsed_sec,
+                              iters,
+                              (double)ops_per_cycle );
+}
+
+static void
 run_stride( void )
 {
   const static size_t sz = 1024ul * 1024ul;
@@ -425,7 +535,7 @@ run_stride( void )
   }
 }
 
-uint32_t G_selected = 5;
+uint32_t G_selected = 6;
 
 static int
 update( void * usr )
@@ -463,7 +573,13 @@ update( void * usr )
   G_pd->graphics->drawText( "tri", strlen( "tri" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
+  G_pd->graphics->drawText( "trs", strlen( "trs" ), kASCIIEncoding, x_off, 0 );
+  x_off += x_sz;
+
   G_pd->graphics->drawText( "str", strlen( "str" ), kASCIIEncoding, x_off, 0 );
+  x_off += x_sz;
+
+  G_pd->graphics->drawText( "dul", strlen( "dul" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
   G_pd->graphics->drawLine( G_selected*x_sz, 18, G_selected*x_sz+x_sz - 4, 18, 2, kColorBlack );
@@ -474,7 +590,9 @@ update( void * usr )
     case 2: run_stream_scale(); break;
     case 3: run_stream_sum(); break;
     case 4: run_stream_triad(); break;
-    case 5: run_stride(); break;
+    case 5: run_stream_triad_small(); break;
+    case 6: run_dual_issue(); break;
+    case 7: run_stride(); break;
   }
 
   return 1;

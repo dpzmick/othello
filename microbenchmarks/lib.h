@@ -43,3 +43,6 @@ void
 stride_test( uint8_t * restrict a,
              size_t             sz,
              size_t             stride );
+
+void
+run_128ins( void );
