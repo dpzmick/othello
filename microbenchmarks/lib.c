@@ -147,7 +147,12 @@ run_128ins( void )
   // 12 general purpose registers
   uint32_t foo1 = 1;
   uint32_t foo2 = 1; // issuing two adds per loop seems to work
-  // uint32_t foo3 = 1; // but at 3 we can see ops/cycle start to drop
+  uint32_t foo3 = 1;
+  uint32_t foo4 = 1;
+  uint32_t foo5 = 1;
+  uint32_t foo6 = 1;
+  uint32_t foo7 = 1;
+  uint32_t foo8 = 1;
 
   // 32 float registers (16 "lanes")
   float    s1   = 0.0f;
@@ -159,44 +164,104 @@ run_128ins( void )
   float    s7   = 0.0f;
   float    s8   = 0.0f;
 
-  // this seems to be fine, ~0.9 ops/cycle meassured
-/* #define INS                                                 \ */
+  // 1.9ish ins/cycle. feels dual issue 1 cycle result latency
+/* #define INS4                                                \ */
 /*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
 /*   asm volatile( "add %0, %0, 123" : "+r"(foo2) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo3) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo4) : : "cc" );  \ */
+/* #define INS8 INS4 INS4 */
+/* #define INS16 INS8 INS8 */
 
-// this falls to 0.6ish ops/cycle
-// #define INS                                                 \
-//   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \
-//   asm volatile( "add %0, %0, 123" : "+r"(foo2) : : "cc" );  \
-//   asm volatile( "add %0, %0, 123" : "+r"(foo3) : : "cc" );  \
+  // should be close to 1 ins/cycle, but I'm only getting 0.84ish
+/* #define INS8                                                \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s1) :: "cc" ); \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s2) :: "cc" ); \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s3) :: "cc" ); \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s4) :: "cc" ); \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s5) :: "cc" ); \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s6) :: "cc" ); \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s7) :: "cc" ); \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s8) :: "cc" ); \ */
+/* #define INS16 INS8 INS8 */
 
-  // vmul has 4 cycle latecy
-  // but this is only getting 0.6 ops/cycle
-  // FIXME left off here, should be 0.9ops/cycle if latency is right
-#define INS4                                                            \
-  asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s1), "=w"(s2) :: "cc" );   \
-  asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s3), "=w"(s4) :: "cc" );   \
-  asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s5), "=w"(s6) :: "cc" );   \
-  asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s7), "=w"(s8) :: "cc" );   \
+  // 1.17 ins/cycle
+  // using dependent adds so they take one cycle
+  // but maybe stalling b.c. of only 3 adds?
+/* #define INS16                                               \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s1) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s2) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s3) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s4) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+
+  // this only gets 1.3ish ops/sec
+/* #define INS16                                               \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s1) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s2) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s3) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s4) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s5) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s6) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s7) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
+/*   asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s8) :: "cc" ); \ */
+/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \ */
 
 
+  // 1.5 ins/cycle
+#define INS32                                               \
+  asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s1) :: "cc" ); \
+  asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo2) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo3) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo4) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo5) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo6) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo7) : : "cc" );  \
+  asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s2) :: "cc" ); \
+  asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo2) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo3) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo4) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo5) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo6) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo7) : : "cc" );  \
+  asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s3) :: "cc" ); \
+  asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo2) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo3) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo4) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo5) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo6) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo7) : : "cc" );  \
+  asm volatile( "vfma.f32 %0, %0, %0" : "+w"(s4) :: "cc" ); \
+  asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo2) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo3) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo4) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo5) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo6) : : "cc" );  \
+  asm volatile( "add %0, %0, 123" : "+r"(foo7) : : "cc" );  \
 
-  // this takes us down to 0.6is ops per cycle, unfortunately
-/* #define INS4                                                            \ */
-/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );              \ */
-/*   asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s1), "=w"(s2) :: "cc" );   \ */
-/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );              \ */
-/*   asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s3), "=w"(s4) :: "cc" );   \ */
-/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );              \ */
-/*   asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s5), "=w"(s6) :: "cc" );   \ */
-/*   asm volatile( "add %0, %0, 123" : "+r"(foo1) : : "cc" );              \ */
-/*   asm volatile( "vfma.f32 %0, %0, %1" : "+w"(s7), "=w"(s8) :: "cc" );   \ */
-
-//#define INS2 INS INS
-/* #define INS4 INS2 INS2 */
-#define INS8 INS4 INS4
-#define INS16 INS8 INS8
-#define INS32 INS16 INS16
+//#define INS32 INS16 INS16
 #define INS64 INS32 INS32
 #define INS128 INS64 INS64
 

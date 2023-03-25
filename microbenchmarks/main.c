@@ -576,10 +576,10 @@ update( void * usr )
   G_pd->graphics->drawText( "trs", strlen( "trs" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "str", strlen( "str" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "dul", strlen( "dul" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
-  G_pd->graphics->drawText( "dul", strlen( "dul" ), kASCIIEncoding, x_off, 0 );
+  G_pd->graphics->drawText( "str", strlen( "str" ), kASCIIEncoding, x_off, 0 );
   x_off += x_sz;
 
   G_pd->graphics->drawLine( G_selected*x_sz, 18, G_selected*x_sz+x_sz - 4, 18, 2, kColorBlack );
@@ -624,66 +624,38 @@ estimate_clock_hz( void )
   G_pd->system->resetElapsedTime();
 
   // make sure all instructions are in the pipe. important?
-  asm volatile( "isb 15" ); // not smart enough to compile with the intrinsics available
+  asm volatile( "isb" ); // not smart enough to compile with the intrinsics available
 
   // manually unroll the loop to make sure we're doing mostly just the add
   // instructions
-  uint32_t foo = 0;
-  for( uint32_t i = 0; i < cnt/50; ++i ) {
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
-    asm volatile( "add %0, %0, 123" : "+r"(foo) : : "cc" );
+  uint32_t a = 0;
+  /* uint32_t b = 0; */
+  /* uint32_t c = 0; */
+  /* uint32_t d = 0; */
+  for( uint32_t i = 0; i < cnt/128; ++i ) {
+
+    // add should have 1 cycle of latency until result is ready
+    // so adding into same register should consume the cycle
+#define INS4                                              \
+    asm volatile( "add %0, %0, 123" : "+r"(a) : : "cc" ); \
+    asm volatile( "add %0, %0, 123" : "+r"(a) : : "cc" ); \
+    asm volatile( "add %0, %0, 123" : "+r"(a) : : "cc" ); \
+    asm volatile( "add %0, %0, 123" : "+r"(a) : : "cc" );
+
+#define INS16 INS4  INS4  INS4  INS4
+#define INS64 INS16 INS16 INS16 INS16
+#define INS128 INS64 INS64
+
+    INS128
+
+#undef INS128
+#undef INS64
+#undef INS16
+#undef INS4
   }
 
   // make sure all instructions are in the pipe. important?
-  asm volatile( "isb 15" ); // not smart enough to compile with the intrinsics available
+  asm volatile( "isb" ); // not smart enough to compile with the intrinsics available
 
   float elapsed_sec = G_pd->system->getElapsedTime(); // returns float seconds
   return (float)cnt / elapsed_sec;
