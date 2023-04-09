@@ -51,7 +51,7 @@ fd_hash( uint64_t     seed,
   }
 
   if( (p+4)<=stop ) { /* Last complete uint */
-    uint64_t w = ((uint64_t)(((uint32_t const *)p)[0]));
+    uint64_t w = ((uint64_t)(((nt const *)p)[0]));
     w *= C1; h ^= w; h = ROTATE_LEFT( h, 23 )*C2 + C3;
     p += 4;
   }

@@ -447,20 +447,6 @@ run_dual_issue( void )
   float ops_per_sec   = (((float)iters)/elapsed_sec) * 128;
   float ops_per_cycle = ops_per_sec / G_freq_hz;
 
-  /* char * buf; */
-
-  /* G_pd->system->formatString( &buf, "Elapsed %0.3f", (double)elapsed_sec ); */
-  /* G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 40 ); */
-  /* G_pd->system->realloc( buf, 0 ); */
-
-  /* G_pd->system->formatString( &buf, "Clock: %0.3f", (double)G_freq_hz ); */
-  /* G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 80 ); */
-  /* G_pd->system->realloc( buf, 0 ); */
-
-  /* G_pd->system->formatString( &buf, "ops per cycle %0.3f", (double)ops_per_cycle ); */
-  /* G_pd->graphics->drawText( buf, strlen( buf ), kASCIIEncoding, 0, 120 ); */
-  /* G_pd->system->realloc( buf, 0 ); */
-
   G_pd->system->logToConsole( "elapsed %0.3fs, iters: %d ops/c: %0.3f",
                               (double)elapsed_sec,
                               iters,

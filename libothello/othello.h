@@ -10,10 +10,11 @@ static inline uint64_t othello_bit_idx(   uint64_t x, uint64_t y ) { return UINT
 static inline uint64_t othello_bit_mask(  uint64_t x, uint64_t y ) { return UINT64_C(1) << (othello_bit_idx((x),(y)));    }
 
 enum {
-  OTHELLO_BIT_WHITE = 0,
-  OTHELLO_BIT_BLACK = 1,
-  OTHELLO_GAME_TIED = 2,
-  OTHELLO_MOVE_PASS = 666,
+  OTHELLO_BIT_WHITE         = 0,
+  OTHELLO_BIT_BLACK         = 1,
+  OTHELLO_GAME_TIED         = 2,
+  OTHELLO_MOVE_PASS         = 666,
+  OTHELLO_GAME_SET_SENTINEL = 0b10101010, /* Stash in curr_player to mark the game as invalid, for use in the hash set */
 };
 
 /* Holds both the board state _and_ the game state. Game state is just the current player.
@@ -53,6 +54,11 @@ othello_game_init_from_str( othello_game_t * game,
 bool
 othello_game_eq( othello_game_t const * a,
                  othello_game_t const * b );
+
+/* Compute a hash of the board and game state */
+
+uint64_t
+othello_game_hash( othello_game_t const * game );
 
 void
 othello_board_print( othello_game_t const * game );

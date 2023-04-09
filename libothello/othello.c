@@ -1,5 +1,6 @@
 #include "othello.h"
-#include "hash.h"
+#include "../libcommon/hash.h"
+#include "../libcommon/common.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -211,6 +212,15 @@ othello_game_eq( othello_game_t const * a,
   return 0==memcmp( a, b, sizeof(*a) );
 }
 
+uint64_t
+othello_game_hash( othello_game_t const * game )
+{
+  /* there are padding bits in our struct, but we've always memset them to zero
+     in initialization. Technically a lil UB */
+
+  return fd_hash( 0x1a2b3c4d5e6f8aUL, (void*)game, sizeof(*game) );
+}
+
 void
 othello_board_print( othello_game_t const * game )
 {
@@ -391,7 +401,7 @@ othello_game_random_playout( othello_game_t * game,
     // FIXME check if it would have inlined anyway?
 
     uint64_t my_moves  = _all_valid_moves( game, curr_player );
-    uint64_t opp_moves = _all_valid_moves( game, !curr_player );
+    uint64_t opp_moves = _all_valid_moves( game, !curr_player ); // FIXME don't ask for this unless my_moves_cnt==0?
 
     uint64_t my_moves_cnt  = (uint64_t)__builtin_popcountll( my_moves );
     uint64_t opp_moves_cnt = (uint64_t)__builtin_popcountll( opp_moves );
@@ -409,7 +419,7 @@ othello_game_random_playout( othello_game_t * game,
     /* have to pass, other player can still play */
     if( my_moves_cnt==0 ) {
       bool valid = othello_game_make_move( game, OTHELLO_MOVE_PASS );
-      assert( valid );
+      if( !valid ) Fail( "tried to make invalid move" );
 
       continue;
     }
@@ -424,6 +434,6 @@ othello_game_random_playout( othello_game_t * game,
     _extract_move( my_moves, rand_move_idx, &mx, &my );
 
     bool valid = othello_game_make_move( game, othello_bit_mask( mx, my ) );
-    assert( valid );
+    if( !valid ) Fail( "tried to make invalid move" );
   }
 }
