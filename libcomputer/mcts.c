@@ -46,7 +46,7 @@ struct mcts_state {
 size_t
 mcts_state_size( size_t n_nodes )
 {
-  n_nodes = next_pow2( n_nodes );
+  n_nodes = (size_t)next_pow2( n_nodes ); // technically downcasting on non x64
   return sizeof(mcts_state_t) + n_nodes*sizeof(node_t);
 }
 
@@ -57,7 +57,7 @@ mcts_state_init( void * mem,
 {
   mcts_state_t * ret = mem;
   ret->trials  = trials;
-  ret->n_nodes = next_pow2( n_nodes );
+  ret->n_nodes = (size_t)next_pow2( n_nodes ); // technically downcasting on non x64
   ret->mask    = ret->n_nodes - 1;
   ret->n_gets  = 0;
   ret->n_loops = 0;
@@ -128,13 +128,13 @@ ucb_select_move( mcts_state_t *         mcts,
                  othello_game_t const * game,
                  node_t const *         game_node,
                  uint64_t               valid_moves,
-                 size_t                 n_moves,
+                 uint64_t               n_moves,
                  uint64_t               min_stones )
 {
   uint64_t best_move     = 0;
   float    best_criteria = -1.0f; // all computed criteria are positive
 
-  for( size_t move_idx = 0; move_idx < n_moves; ++move_idx ) {
+  for( uint64_t move_idx = 0; move_idx < n_moves; ++move_idx ) {
     /* select the ith valid move */
     uint64_t move = keep_ith_set_bit( valid_moves, move_idx );
 
@@ -187,7 +187,7 @@ mcts_select_move( mcts_state_t *         mcts,
   size_t   trials     = mcts->trials;
   uint64_t min_stones = othello_game_popcount( game );
   uint64_t moves      = othello_game_all_valid_moves( game );
-  size_t   n_moves    = (size_t)__builtin_popcountll( moves );
+  uint64_t n_moves    = (size_t)__builtin_popcountll( moves );
   if( n_moves==0 ) return OTHELLO_MOVE_PASS;
 
   node_t * curr = mcts_get( mcts, game, min_stones, true );
@@ -251,7 +251,7 @@ mcts_select_move( mcts_state_t *         mcts,
   uint64_t best_move     = OTHELLO_MOVE_PASS;
   float    best_criteria = -1;
 
-  for( size_t move_idx = 0; move_idx < n_moves; ++move_idx ) {
+  for( uint64_t move_idx = 0; move_idx < n_moves; ++move_idx ) {
     uint64_t move = keep_ith_set_bit( moves, move_idx );
 
     /* copy the game state */

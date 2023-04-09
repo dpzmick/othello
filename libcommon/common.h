@@ -40,14 +40,14 @@ next_pow2( uint64_t x )
 // UB if popcount(bitset) < idx
 static inline uint64_t
 keep_ith_set_bit( uint64_t bitset,
-                  size_t   idx )
+                  uint64_t idx )
 {
   while( idx ) {
-    uint64_t offset = 63UL - (uint64_t)__builtin_clzll( bitset );
-    bitset = bitset & ~(1UL << offset);
+    uint64_t offset = 63ULL - (uint64_t)__builtin_clzll( bitset );
+    bitset = bitset & ~(1ULL << offset);
     idx -= 1;
   }
 
-  uint64_t offset = 63UL - (uint64_t)__builtin_clzll( bitset );
-  return 1UL << offset;
+  uint64_t offset = 63ULL - (uint64_t)__builtin_clzll( bitset );
+  return 1ULL << offset;
 }
