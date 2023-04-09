@@ -340,7 +340,7 @@ othello_game_make_move( othello_game_t * game,
   // it may be possible to precompute flips in each direction then apply
   // precomputed masks for a given board state?
 
-  uint64_t mx, my;
+  uint64_t mx = 0, my = 0;
   _extract_move( move, 0, &mx, &my );
 
   // n,s,e,w,ne,nw,se,sw

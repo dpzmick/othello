@@ -163,7 +163,7 @@ ucb_select_move( mcts_state_t *         mcts,
     }
 
     if( game_node->game_cnt > 0 && move_node->game_cnt > 0 ) {
-      criteria += sqrtf(2.0) * sqrtf(log2f(game_node->game_cnt) / (float)move_node->game_cnt);
+      criteria += sqrtf(2.0) * sqrtf(log2f((float)game_node->game_cnt) / (float)move_node->game_cnt);
     }
 
     if( criteria > best_criteria ) {
@@ -248,7 +248,7 @@ mcts_select_move( mcts_state_t *         mcts,
   }
 
   // now pick the move that maximizes likelyhood we win
-  uint64_t best_move;
+  uint64_t best_move     = OTHELLO_MOVE_PASS;
   float    best_criteria = -1;
 
   for( size_t move_idx = 0; move_idx < n_moves; ++move_idx ) {
