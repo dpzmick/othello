@@ -28,12 +28,14 @@ typedef struct {
 // whole ram is 16 MiB
 
 struct mcts_state {
-  size_t trials;
-  size_t n_nodes;
-  size_t mask;
-  size_t n_gets;                // stats
-  size_t n_loops;               // stats
-  node_t nodes[];
+  size_t   trials;
+  uint8_t  play_as;
+  uint64_t seed;
+  size_t   n_nodes;
+  size_t   mask;
+  size_t   n_gets;              // stats
+  size_t   n_loops;             // stats
+  node_t   nodes[];
 };
 
 // We can't really estimate the load factor and rehash "sometimes" since cells
@@ -51,12 +53,16 @@ mcts_state_size( size_t n_nodes )
 }
 
 mcts_state_t *
-mcts_state_init( void * mem,
-                 size_t trials,
-                 size_t n_nodes )
+mcts_state_init( void *  mem,
+                 size_t  trials,
+                 uint8_t play_as,
+                 uint64_t seed,
+                 size_t  n_nodes )
 {
   mcts_state_t * ret = mem;
   ret->trials  = trials;
+  ret->play_as = play_as;
+  ret->seed    = seed;
   ret->n_nodes = (size_t)next_pow2( n_nodes ); // technically downcasting on non x64
   ret->mask    = ret->n_nodes - 1;
   ret->n_gets  = 0;
@@ -182,7 +188,7 @@ mcts_select_move( mcts_state_t *         mcts,
   /* assumes that the game is some game from later in the game than boards we've
      already seen */
 
-  if( game->curr_player!=OTHELLO_BIT_WHITE ) Fail( "Computer only plays as white" );
+  if( game->curr_player!=mcts->play_as ) Fail( "Computer only plays as %d", mcts->play_as );
 
   size_t   trials     = mcts->trials;
   uint64_t min_stones = othello_game_popcount( game );
@@ -228,7 +234,7 @@ mcts_select_move( mcts_state_t *         mcts,
       }
       else {
         /* we've never been here. Add a randomized playout */
-        uint64_t seed = game->white * game->black * trial;
+        uint64_t seed = mcts->seed * game->white * game->black * trial;
         winner = othello_game_random_playout( &top, seed ); // modifies top
         break; // !important
       }
@@ -242,7 +248,7 @@ mcts_select_move( mcts_state_t *         mcts,
       node_t * path_node = mcts_get( mcts, &path[i], min_stones, false );
       if( !path_node ) Fail( "impossible" );
 
-      path_node->win_cnt  += winner==OTHELLO_BIT_WHITE;
+      path_node->win_cnt  += winner==mcts->play_as;
       path_node->game_cnt += 1;
     }
   }

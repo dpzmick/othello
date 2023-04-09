@@ -13,9 +13,11 @@ size_t
 mcts_state_size( size_t n_boards_memory );
 
 mcts_state_t *
-mcts_state_init( void * mem,
-                 size_t trials,
-                 size_t n_boards );
+mcts_state_init( void *   mem,
+                 size_t   trials,
+                 uint8_t  play_as,
+                 uint64_t seed,
+                 size_t   n_boards );
 
 uint64_t
 mcts_select_move( mcts_state_t *         mcts,

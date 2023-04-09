@@ -224,7 +224,7 @@ TEST( pick_next_move )
   mcts = malloc( mcts_state_size( n ) );
   REQUIRE( mcts );
 
-  mcts_state_init( mcts, 100, n );
+  mcts_state_init( mcts, 100, OTHELLO_BIT_BLACK, n );
   othello_game_init( game );
 
   // computer will only play as white, so make a play as black
@@ -251,7 +251,7 @@ TEST( pick_next_move_against_random_player )
   mcts = malloc( mcts_state_size( n ) );
   REQUIRE( mcts );
 
-  mcts_state_init( mcts, 100, n );
+  mcts_state_init( mcts, 100, OTHELLO_BIT_BLACK, n );
   othello_game_init( game );
 
   uint64_t st = wallclock();
