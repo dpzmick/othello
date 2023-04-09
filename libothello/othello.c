@@ -7,8 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "valid_moves_serial.h"
-//#include "valid_moves_vectorized.h"
+//#include "valid_moves_serial.h"
+#include "valid_moves_vectorized.h"
 
 void
 othello_game_init( othello_game_t * game )
