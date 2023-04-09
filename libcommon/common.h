@@ -44,10 +44,10 @@ keep_ith_set_bit( uint64_t bitset,
 {
   while( idx ) {
     uint64_t offset = 63UL - (uint64_t)__builtin_clzll( bitset );
-    bitset = bitset & ~(1 << offset);
+    bitset = bitset & ~(1UL << offset);
     idx -= 1;
   }
 
   uint64_t offset = 63UL - (uint64_t)__builtin_clzll( bitset );
-  return 1<<offset;
+  return 1UL << offset;
 }

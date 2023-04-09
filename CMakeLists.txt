@@ -7,6 +7,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer -fstrict-aliasing")
 
 # libraries
 add_subdirectory(libcommon)
+add_subdirectory(libcomputer)
 add_subdirectory(libothello)
 add_subdirectory(libunit)
 

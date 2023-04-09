@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* index the bitboard going left to right, so 0,0 prints in upper left corner
@@ -60,6 +61,9 @@ othello_game_eq( othello_game_t const * a,
 uint64_t
 othello_game_hash( othello_game_t const * game );
 
+size_t
+othello_game_popcount( othello_game_t const * game );
+
 void
 othello_board_print( othello_game_t const * game );
 
@@ -86,3 +90,5 @@ othello_game_make_move( othello_game_t * game,
 uint8_t
 othello_game_random_playout( othello_game_t * game,
                              uint64_t         seed );
+
+// FIXME extract random player into libcomputer

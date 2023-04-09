@@ -221,6 +221,13 @@ othello_game_hash( othello_game_t const * game )
   return fd_hash( 0x1a2b3c4d5e6f8aUL, (void*)game, sizeof(*game) );
 }
 
+size_t
+othello_game_popcount( othello_game_t const * game )
+{
+  return (size_t)__builtin_popcountll( game->white )
+    + (size_t)__builtin_popcountll( game->black );
+}
+
 void
 othello_board_print( othello_game_t const * game )
 {
@@ -305,8 +312,6 @@ _extract_move( uint64_t   all_moves,
       }
     }
   }
-
-  assert( false ); // should be unreachable
 }
 
 bool
@@ -397,7 +402,7 @@ othello_game_random_playout( othello_game_t * game,
                              uint64_t         seed )
 {
   for( size_t cnt = 0;; cnt += 1 ) {
-    uint8_t  curr_player = game->curr_player;
+    uint8_t curr_player = game->curr_player;
 
     // not caling game over function here to avoid computing moves twice
     // FIXME check if it would have inlined anyway?

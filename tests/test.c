@@ -1,6 +1,7 @@
 #include "../libunit/unit.h"
 
-int main()
+int main( int argc, char ** argv )
 {
-  return unit_test_run_all( NULL );
+  char const * filter = argc > 1 ? argv[1] : NULL;
+  return unit_test_run_all( filter );
 }

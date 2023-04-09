@@ -38,3 +38,14 @@ TEST( keep_ith_bit )
   ret = keep_ith_set_bit( bitset, 2 );
   CHECK_EQ( ret, 0b00001 );
 }
+
+/* Make sure we don't get tripped up by any funky integer promotion rules */
+TEST( keep_ith_bit_64 )
+{
+  uint64_t bitset;
+  uint64_t ret;
+
+  bitset = 0x102004080000UL;
+  ret = keep_ith_set_bit( bitset, 0 );
+  CHECK_EQ( ret, 0x100000000000UL );
+}
