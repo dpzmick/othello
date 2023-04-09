@@ -14,6 +14,17 @@
 
 static const size_t trials = 100;
 
+static uint64_t
+select_random_move( uint64_t valid_moves,
+                    uint64_t seed )
+{
+  uint64_t valid_moves_cnt  = (uint64_t)__builtin_popcountll( valid_moves );
+  if( valid_moves_cnt==0 ) return OTHELLO_MOVE_PASS;
+
+  uint64_t rand_move_idx = hash_u64( seed ) % valid_moves_cnt;
+  return keep_ith_set_bit( valid_moves, rand_move_idx );
+}
+
 int
 main( void )
 {
@@ -31,7 +42,7 @@ main( void )
   for( size_t trial = 0; trial < trials; ++trial ) {
     othello_game_init( game );
     mcts_state_init( black_player_state, 1000, OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), 8192 );
-    mcts_state_init( white_player_state, 1000, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 );
+    /* mcts_state_init( white_player_state, 1000, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 ); */
 
     uint8_t winner;
     while( !othello_game_is_over( game, &winner ) ) {
@@ -46,9 +57,13 @@ main( void )
       /* valid = othello_game_make_move( game, move ); */
       /* if( !valid ) Fail( "move invalid" ); */
 
-      move = nn_select_move( game );
+      move = select_random_move( othello_game_all_valid_moves( game ), game->white*game->black+trial );
       valid = othello_game_make_move( game, move );
       if( !valid ) Fail( "move invalid" );
+
+      /* move = nn_select_move( game ); */
+      /* valid = othello_game_make_move( game, move ); */
+      /* if( !valid ) Fail( "move invalid" ); */
     }
 
     if( winner==OTHELLO_BIT_BLACK ) black_wins += 1;
