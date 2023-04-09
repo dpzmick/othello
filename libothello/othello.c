@@ -318,6 +318,8 @@ othello_game_make_move( othello_game_t * game,
     return true;
   }
 
+  if( 1 != __builtin_popcountll( move ) ) return false;
+
   if( (move & othello_game_all_valid_moves( game )) == 0 ) return false;
 
   uint8_t    player = game->curr_player;
@@ -425,15 +427,11 @@ othello_game_random_playout( othello_game_t * game,
     }
 
     // pick a move at random.
-    // FIXME use better random number generator here
-    // FIXME modulo bad
-    // FIXME select a single bit more intelligently
+    // FIXME modulo isn't great
     uint64_t rand_move_idx = hash_u64( seed+cnt ) % my_moves_cnt;
+    uint64_t move          = keep_ith_set_bit( my_moves, rand_move_idx );
 
-    uint64_t mx, my;
-    _extract_move( my_moves, rand_move_idx, &mx, &my );
-
-    bool valid = othello_game_make_move( game, othello_bit_mask( mx, my ) );
+    bool valid = othello_game_make_move( game, move );
     if( !valid ) Fail( "tried to make invalid move" );
   }
 }

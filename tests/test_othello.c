@@ -847,9 +847,3 @@ TEST( basic_random_play )
     || result==OTHELLO_BIT_BLACK
     || result==OTHELLO_GAME_TIED) ;
 }
-
-
-int main()
-{
-  return unit_test_run_all( NULL );
-}

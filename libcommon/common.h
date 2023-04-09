@@ -36,3 +36,18 @@ next_pow2( uint64_t x )
   uint64_t first_one = 64ul - (uint64_t)__builtin_clzll( x-1 ); // -1 in case number is already a power of two
   return 1ul << first_one;
 }
+
+// UB if popcount(bitset) < idx
+static inline uint64_t
+keep_ith_set_bit( uint64_t bitset,
+                  size_t   idx )
+{
+  while( idx ) {
+    uint64_t offset = 63UL - (uint64_t)__builtin_clzll( bitset );
+    bitset = bitset & ~(1 << offset);
+    idx -= 1;
+  }
+
+  uint64_t offset = 63UL - (uint64_t)__builtin_clzll( bitset );
+  return 1<<offset;
+}
