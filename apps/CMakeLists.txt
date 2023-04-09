@@ -9,5 +9,5 @@ if (NOT EMSCRIPTEN)
   endif()
 
   add_executable(thunderdome thunderdome.c)
-  target_link_libraries(thunderdome libcommon libothello libcomputer)
+  target_link_libraries(thunderdome libcommon libothello libcomputer m)
 endif()
