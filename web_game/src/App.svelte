@@ -1,13 +1,14 @@
 <script>
+  import {setupApi} from './othello.js'
   import Game from './Game.svelte'
-  import {OthelloGame} from './othello.js'
 </script>
 
 <main>
-{#await OthelloGame()}
+
+{#await setupApi()}
 Loading....
-{:then game}
-  <h1>Othello</h1>
-  <Game game={game} />
+{:then api}
+<Game api={api} />
 {/await}
+
 </main>

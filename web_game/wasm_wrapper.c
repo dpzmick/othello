@@ -1,6 +1,7 @@
-#include "../libothello/othello.h"
+#include "../libcommon/common.h"
 #include "../libcomputer/mcts.h"
 #include "../libcomputer/nn.h"
+#include "../libothello/othello.h"
 
 #include <emscripten.h>
 #include <stdlib.h>
@@ -44,6 +45,13 @@ delete_othello_wrap( othello_wrap_t * wrap )
 
 EMSCRIPTEN_KEEPALIVE
 int
+othello_wrap_turn( othello_wrap_t * wrap )
+{
+  return wrap->game->curr_player;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int
 othello_wrap_board_at( othello_wrap_t const * wrap,
                        int                    x,
                        int                    y )
@@ -52,9 +60,6 @@ othello_wrap_board_at( othello_wrap_t const * wrap,
   uint64_t black       = wrap->game->black;
   uint64_t valid_moves = othello_game_all_valid_moves( wrap->game );
   uint64_t mask        = othello_bit_mask( (uint64_t)x, (uint64_t)y );
-
-
-  // FIXME flag valid moves here too?
 
   if( mask&white )       return 1;
   if( mask&black )       return -1;
@@ -81,5 +86,11 @@ othello_wrap_play_at( othello_wrap_t * wrap,
   else if( wrap->mode == 1 ) {
     uint64_t computer_move = nn_select_move( wrap->game );
     othello_game_make_move( wrap->game, computer_move );
+  }
+  else if( wrap->mode == 2 ) {
+    Fail( "not implemented" );
+  }
+  else if( wrap->mode == 3 ) {
+    // no computer
   }
 }

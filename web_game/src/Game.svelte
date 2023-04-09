@@ -1,52 +1,77 @@
 <script>
-  let whiteScore = 0;
-  let blackScore = 0;
+  import {OthelloGame} from './othello.js'
 
-  function getCells() {
-    whiteScore=0;
-    blackScore=0;
+  export let api;
 
-    let cells = [];
-    for (let y = 0; y < 8; ++y) {
-      let row = [];
-      for (let x = 0; x < 8; ++x) {
-        let cell = game.boardAt(x,y);
-        whiteScore += cell=="white";
-        blackScore += cell=="black";
-        row.push(cell);
-      }
-      cells.push(row);
-    }
-    return cells;
-  }
+  // gloal params
+  let aiType = 1;
+  let game = OthelloGame(api, aiType);
+  let cells = game.getCells()
+  let [whiteScore, blackScore] = game.getScores();
+  let player = game.turn();
 
-  function makePlay(x, y) {
+  let dialog; // Reference to the dialog tag
+  const closeClick = () => {
+    dialog.close();
+  };
+
+  const restartGame = () => {
+    let e = document.getElementById("ai-type");
+    let selected = e.value;
+
+    aiType = selected;
+    game = OthelloGame(api, aiType);
+    cells = game.getCells()
+    let [_whiteScore, _blackScore] = game.getScores(); // binding directly not compiling right?
+    whiteScore = _whiteScore;
+    blackScore = _blackScore;
+    player = game.turn();
+
+    dialog.close();
+  };
+
+  function makePlay(x,y) {
     game.playAt(x,y);
-    // oponent picks move
-    cells = getCells();
+    cells = game.getCells();
+    [whiteScore, blackScore] = game.getScores(); // for some reason this works here
+    player = game.turn();
   }
-
-  export let game = null; // FIXME make required
-  let cells = getCells();
-
-
 </script>
 
+<div id="game">
+<h3>Othello</h3>
+<dialog id="configuration-dialog" bind:this={dialog}>
+  <h1>Game Setup</h1>
+  <p>Select type of AI to use:</p>
+  <select name="ai-type" id="ai-type">
+    <option value="0" selected={aiType=="0"}>Monte Carlo Tree Search</option>
+    <option value="1" selected={aiType=="1"}>Neural Net</option>
+    <option value="2" selected={aiType=="2"}>Monte Carlo Tree Search w/ Neural Net</option>
+    <option value="3" selected={aiType=="3"}>No AI</option>
+  </select>
+  <button on:click={restartGame}>Restart Game</button>
+  <button on:click={closeClick}>Close Settings</button>
+</dialog>
+
 <p>White: {whiteScore}. Black: {blackScore}</p>
+<p>{player} to play</p>
 <table>
   {#each cells as rowCells, y}
     <tr>
       {#each rowCells as cell, x}
         <td>
-          <button class="cell"
-            on:click="{() => makePlay(x, y)}">
-              <div class={cell} />
+          <button class="cell" on:click={() => makePlay(x, y)}>
+            <div class={cell} />
           </button>
         </td>
       {/each}
     </tr>
   {/each}
 </table>
+
+<p></p>
+<button on:click={() => dialog.showModal()}>Configure Game</button>
+</div>
 
 <style>
 table {

@@ -16,7 +16,7 @@ class NN(nn.Module):
 
 
 net = NN()
-net.load_state_dict(torch.load("from_gpu_3.torch", map_location=torch.device("cpu")))
+net.load_state_dict(torch.load("from_gpu_final.torch", map_location=torch.device("cpu")))
 
 print("static const float l1_weights[] = {")
 for ws in net.state_dict()["l1.weight"]:
