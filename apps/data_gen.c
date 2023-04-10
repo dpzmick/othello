@@ -41,7 +41,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#define N_TRIALS 1000
+#define N_TRIALS 5000
 
 static char const * const ALL_FILES[] = {
   "wthor_files/WTH_1977.wtb", "wthor_files/WTH_1978.wtb", "wthor_files/WTH_1979.wtb",
