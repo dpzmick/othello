@@ -126,9 +126,9 @@ othello_game_start_move( othello_game_t const * game,
     uint64_t white_stones = (uint64_t)__builtin_popcountll( game->white );
     uint64_t black_stones = (uint64_t)__builtin_popcountll( game->black );
 
-    if( white_stones > black_stones ) *out_winner = OTHELLO_BIT_WHITE;
-    if( black_stones > white_stones ) *out_winner = OTHELLO_BIT_BLACK;
-    else                              *out_winner = OTHELLO_GAME_TIED;
+    if( white_stones > black_stones )      *out_winner = OTHELLO_BIT_WHITE;
+    else if( black_stones > white_stones ) *out_winner = OTHELLO_BIT_BLACK;
+    else                                   *out_winner = OTHELLO_GAME_TIED;
 
     return false;
   }

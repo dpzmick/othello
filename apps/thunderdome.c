@@ -41,8 +41,8 @@ main( void )
   othello_game_t game[1];
   for( size_t trial = 0; trial < trials; ++trial ) {
     othello_game_init( game );
-    mcts_state_init( black_player_state, 64, OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), 8192 );
-    mcts_state_init( white_player_state, 64, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 );
+    mcts_state_init( black_player_state, 64,   OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), 8192 );
+    mcts_state_init( white_player_state, 1024, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 );
 
     uint8_t winner;
     while( 1 ) {

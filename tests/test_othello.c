@@ -597,6 +597,26 @@ TEST( weird_get_all_moves_1 )
 
 }
 
+TEST( test_winner )
+{
+  othello_game_t game[1];
+  othello_game_init_from_str( game,
+                              OTHELLO_BIT_BLACK,
+                              "WWWWWWWW"
+                              "WWWWWWWW"
+                              "WWWWWWWW"
+                              "WWWWWWWW"
+                              "WWWWWWWW"
+                              "WWWWWWWW"
+                              "WWWWWWWW"
+                              "WWWWWWWW" );
+  uint8_t            winner;
+  othello_move_ctx_t ctx[1];
+  bool valid = othello_game_start_move( game, ctx, &winner );
+  CHECK( valid==false );
+  CHECK( winner == OTHELLO_BIT_WHITE );
+}
+
 TEST( basic_flips )
 {
 

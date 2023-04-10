@@ -86,8 +86,6 @@ game_tree_get( game_tree_t *          tree,
     // boards always evolve by adding new stones
     // a cell is "empty" if it contains an earlier game state that we no longer care about
     if( allow_insert && node_game_popcnt < min_stones ) {
-      //printf( "insert: %llu %llu\n", game->white, game->black );
-
       // reset node and use it
       *node->game    = *game;
       node->win_cnt  = 0;
@@ -198,7 +196,7 @@ select_best_child( game_tree_t *              tree,
 static void
 run_trial( mcts_state_t *         mcts,
            othello_game_t const * game,
-           uint64_t               trial )
+           uint64_t               seed )
 {
   /* Search the tree until we find an unexplored node. */
 
@@ -242,7 +240,6 @@ run_trial( mcts_state_t *         mcts,
   /* We have unexplored node and the path we took to get to it */
 
   othello_game_t _tmp   = *unexplored_node->game;
-  uint64_t       seed   = mcts->seed * game->white * game->black * trial;
   uint8_t        winner = othello_game_random_playout( &_tmp, seed );
 
   /* Update everything in the path. All should be in table because we just
@@ -256,6 +253,26 @@ run_trial( mcts_state_t *         mcts,
     path_node->game_cnt += 1;
   }
 }
+
+#if 0
+static void
+dump_tree( game_tree_t const * tree,
+           uint64_t            min_stones )
+{
+  for( size_t i = 0; i < tree->n_nodes; ++i ) {
+    game_tree_node_t const * node             = &tree->nodes[i];
+    othello_game_t const *   node_game        = node->game;
+    size_t                   node_game_popcnt = othello_game_popcount( node_game );
+
+    if( node_game_popcnt < min_stones ) continue;
+    if( node->win_cnt == 0 ) continue;
+
+    printf( "----------------------\n" );
+    othello_board_print( node_game );
+    printf( "wins: %llu, cnt: %llu\n", node->win_cnt, node->game_cnt );
+  }
+}
+#endif
 
 uint64_t
 mcts_select_move( mcts_state_t *             mcts,
@@ -275,8 +292,9 @@ mcts_select_move( mcts_state_t *             mcts,
   if( n_moves==0 ) return OTHELLO_MOVE_PASS;
 
   /* Run enough trials to ensure we expand all immediate children */
+  uint64_t now = wallclock();
   for( size_t trial = 0; trial < MAX( trials, n_moves ); ++trial ) {
-    run_trial( mcts, game, trial );
+    run_trial( mcts, game, hash_u64( trial + now ) );
   }
 
   uint64_t best_move     = OTHELLO_MOVE_PASS;
@@ -307,6 +325,8 @@ mcts_select_move( mcts_state_t *             mcts,
       best_criteria = criteria;
     }
   }
+
+  /* dump_tree( tree, min_stones ); */
 
   return best_move;
 }

@@ -6,7 +6,7 @@
 #include <emscripten.h>
 #include <stdlib.h>
 
-#define MCTS_TRIALS 7000
+#define MCTS_TRIALS 3000
 #define MCTS_NODES  1<<15
 
 typedef struct {
