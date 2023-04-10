@@ -8,6 +8,7 @@
 #define ARRAY_SIZE(a) (sizeof((a))/sizeof(*(a)))
 #define LIKELY(c)   __builtin_expect(c, 1)
 #define UNLIKELY(c) __builtin_expect(c, 0)
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
 
 void
 __attribute__((noreturn))
