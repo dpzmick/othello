@@ -6,8 +6,8 @@
 #include <emscripten.h>
 #include <stdlib.h>
 
-#define MCTS_TRIALS 1000
-#define MCTS_NODES  8192
+#define MCTS_TRIALS 7000
+#define MCTS_NODES  1<<15
 
 typedef struct {
   othello_game_t game[1];
@@ -28,7 +28,7 @@ new_othello_wrap( int mode )
     return NULL;
   }
 
-  mcts_state_init( ret->mcts, MCTS_TRIALS, MCTS_NODES );
+  mcts_state_init( ret->mcts, MCTS_TRIALS, OTHELLO_BIT_WHITE, wallclock(), MCTS_NODES );
   othello_game_init( ret->game );
 
   ret->mode = mode;
@@ -73,19 +73,34 @@ othello_wrap_play_at( othello_wrap_t * wrap,
                       int              x,
                       int              y )
 {
-  uint64_t move        = othello_bit_mask( (uint64_t)x, (uint64_t)y );
-  uint64_t valid_moves = othello_game_all_valid_moves( wrap->game );
-  if( (move&valid_moves) == 0 ) return; // just don't do anything
+  uint64_t move = othello_bit_mask( (uint64_t)x, (uint64_t)y );
 
-  othello_game_make_move( wrap->game, move );
+  uint8_t winner;
+  othello_move_ctx_t ctx[1];
+  if( !othello_game_start_move( wrap->game, ctx, &winner ) ) {
+    return; // just don't do anything
+  }
+
+  uint64_t valid_moves = ctx->own_moves;
+  if( (move&valid_moves) == 0 ) {
+    return; // just don't do anything
+  }
+
+  bool valid = othello_game_make_move( wrap->game, ctx, move );
+  if( !valid ) Fail( "should not have failed once we got here" );
+
+  /* start the computer move */
+  if( !othello_game_start_move( wrap->game, ctx, &winner ) ) {
+    return; // no moves left to make
+  }
 
   if( wrap->mode==0 ) {
-    uint64_t computer_move = mcts_select_move( wrap->mcts, wrap->game );
-    othello_game_make_move( wrap->game, computer_move );
+    uint64_t computer_move = mcts_select_move( wrap->mcts, wrap->game, ctx );
+    othello_game_make_move( wrap->game, ctx, computer_move );
   }
   else if( wrap->mode == 1 ) {
-    uint64_t computer_move = nn_select_move( wrap->game );
-    othello_game_make_move( wrap->game, computer_move );
+    uint64_t computer_move = nn_select_move( wrap->game, ctx );
+    othello_game_make_move( wrap->game, ctx, computer_move );
   }
   else if( wrap->mode == 2 ) {
     Fail( "not implemented" );

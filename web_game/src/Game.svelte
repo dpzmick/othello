@@ -4,7 +4,7 @@
   export let api;
 
   // gloal params
-  let aiType = 1;
+  let aiType = 0;
   let game = OthelloGame(api, aiType);
   let cells = game.getCells()
   let [whiteScore, blackScore] = game.getScores();

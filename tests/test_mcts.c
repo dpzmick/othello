@@ -215,33 +215,6 @@ TEST( test_board_abuse_benchmark )
 }
 #endif
 
-TEST( pick_next_move )
-{
-  mcts_state_t * mcts;
-  othello_game_t game[1];
-  size_t         n = 8192;
-
-  mcts = malloc( mcts_state_size( n ) );
-  REQUIRE( mcts );
-
-  mcts_state_init( mcts, 100, OTHELLO_BIT_WHITE, 0x12345, n );
-  othello_game_init( game );
-
-  // computer will only play as white, so make a play as black
-  bool valid = othello_game_make_move( game, othello_bit_mask( 2, 3 ) );
-  REQUIRE( valid );
-
-  /* uint64_t st = wallclock(); */
-
-  uint64_t move = mcts_select_move( mcts, game );
-  CHECK( move != OTHELLO_MOVE_PASS );
-
-  /* uint64_t ed = wallclock(); */
-  /* double sec = ((double)(ed-st))/1e9; */
-
-  //printf("picked move %llx in %0.2f sec\n", move, sec );
-}
-
 TEST( pick_next_move_against_random_player )
 {
   mcts_state_t * mcts;
@@ -258,29 +231,31 @@ TEST( pick_next_move_against_random_player )
 
   uint8_t winner;
   while( 1 ) {
-    if( othello_game_is_over( game, &winner ) ) break;
+    othello_move_ctx_t ctx[1];
+    if( !othello_game_start_move( game, ctx, &winner ) ) break;
 
     /* black goes */
-    uint64_t moves   = othello_game_all_valid_moves( game );
-    uint64_t n_moves = (uint64_t)__builtin_popcountll( moves );
+    uint64_t moves   = ctx->own_moves;
+    uint64_t n_moves = ctx->n_own_moves;
 
     if( moves ) {
       uint64_t entropy       = st * game->white * game->black;
       uint64_t rand_move_idx = hash_u64( entropy ) % n_moves;
       uint64_t move          = keep_ith_set_bit( moves, rand_move_idx );
 
-      bool valid = othello_game_make_move( game, move );
+      bool valid = othello_game_make_move( game, ctx, move );
       REQUIRE( valid );
     }
     else {
-      bool valid = othello_game_make_move( game, OTHELLO_MOVE_PASS );
+      bool valid = othello_game_make_move( game, ctx, OTHELLO_MOVE_PASS );
       REQUIRE( valid );
     }
 
     /* computer plays */
+    if( !othello_game_start_move( game, ctx, &winner ) ) break;
 
-    uint64_t move = mcts_select_move( mcts, game );
-    bool valid = othello_game_make_move( game, move );
+    uint64_t move = mcts_select_move( mcts, game, ctx );
+    bool valid = othello_game_make_move( game, ctx, move );
     REQUIRE( valid );
   }
 

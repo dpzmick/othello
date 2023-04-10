@@ -2,14 +2,11 @@
 #include <stdint.h>
 #include <arm_neon.h>
 
-// FIXME must be a better way to do this?
-static inline bool
-any_non_zero( uint64x2_t v )
-{
-  return v[0]!=0 || v[1]!=0;
-}
+/* We are a bit dependent on the semantics of the ARM left shift in this
+   implementation. Would be nice to replace that with something else and use
+   this for other platforms. */
 
-static inline uint64_t
+static inline uint64x2_t
 _gen_shift_moves_partial( uint64x2_t owns,
                           uint64x2_t opps,
                           uint64x2_t empties,
@@ -33,7 +30,12 @@ _gen_shift_moves_partial( uint64x2_t owns,
      2. or we find our own cell (invalid move) */
 
   uint64x2_t lane_moves = { 0, 0 };
-  while( any_non_zero( candidates ) ) {
+
+  /* Instead of searching until we run out of candidates (because checking both
+     lanes and reducing isn't vector friendly), just search the max distance we
+     could possibly go,*/
+
+  for( size_t i = 0; i < 8; ++i ) {
     /* add to moves any empty cells <direction> of a current candidate */
 
     lane_moves = vorrq_u64(
@@ -54,10 +56,10 @@ _gen_shift_moves_partial( uint64x2_t owns,
 
   }
 
-  return lane_moves[0] | lane_moves[1];
+  return lane_moves;
 }
 
-uint64_t
+static inline uint64_t
 _all_valid_moves( othello_game_t const * game,
                   uint8_t                player )
 {
@@ -109,11 +111,11 @@ _all_valid_moves( othello_game_t const * game,
     UINT64_C(0x7e7e7e7e7e7e00),   /* down-right */
   };
 
-  uint64_t moves = 0;
+  uint64x2_t moves = { 0, 0 };
   moves |= _gen_shift_moves_partial( owns, opps, empties, shifts_a, masks_a );
   moves |= _gen_shift_moves_partial( owns, opps, empties, shifts_b, masks_b );
   moves |= _gen_shift_moves_partial( owns, opps, empties, shifts_c, masks_c );
   moves |= _gen_shift_moves_partial( owns, opps, empties, shifts_d, masks_d );
 
-  return moves;
+  return moves[0] | moves[1];
 }

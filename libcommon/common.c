@@ -12,7 +12,7 @@ _fail( char const * file,
   va_list args;
   va_start( args, fmt );
 
-  fprintf( stderr, "Fail(%s:%d): ", file, line );
+  fprintf( stderr, "%s:%d: Fail: ", file, line );
   vfprintf( stderr, fmt, args );
   fprintf( stderr, "\n" );
   fflush( stderr );

@@ -90,12 +90,13 @@ pred_board_quality( uint64_t white,
 }
 
 uint64_t
-nn_select_move( othello_game_t const * game )
+nn_select_move( othello_game_t const *     game,
+                othello_move_ctx_t const * ctx )
 {
   if( game->curr_player!=OTHELLO_BIT_WHITE ) Fail( "Computer only plays as white" );
 
-  uint64_t moves      = othello_game_all_valid_moves( game );
-  uint64_t n_moves    = (uint64_t)__builtin_popcountll( moves );
+  uint64_t moves      = ctx->own_moves;
+  uint64_t n_moves    = ctx->n_own_moves;
   if( n_moves==0 ) return OTHELLO_MOVE_PASS;
 
   uint64_t best_move  = OTHELLO_MOVE_PASS;
@@ -104,7 +105,7 @@ nn_select_move( othello_game_t const * game )
   for( uint64_t move_idx = 0; move_idx < n_moves; ++move_idx ) {
     othello_game_t updated_game[1] = { *game };
     uint64_t       move            = keep_ith_set_bit( moves, move_idx );
-    bool           valid           = othello_game_make_move( updated_game, move );
+    bool           valid           = othello_game_make_move( updated_game, ctx, move );
     if( UNLIKELY( !valid ) ) Fail( "attempted to apply invalid move" );
 
     float score = pred_board_quality( game->white, game->black );

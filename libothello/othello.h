@@ -34,6 +34,13 @@ typedef struct othello_game {
   uint64_t black;
 } othello_game_t;
 
+typedef struct othello_move_ctx {
+  uint64_t own_moves;
+  uint64_t n_own_moves;
+  uint64_t opp_moves;
+  uint64_t n_opp_moves;
+} othello_move_ctx_t;
+
 /* Initialize the board in a valid state for real othello */
 
 void
@@ -67,23 +74,28 @@ othello_game_popcount( othello_game_t const * game );
 void
 othello_board_print( othello_game_t const * game );
 
-/*  Check if game is over, return winner if so (else out_winner is untouched) */
-
-bool
-othello_game_is_over( othello_game_t const * game,
-                      uint8_t *              out_winner );
-
 /* Return all valid moves for current player */
 
 uint64_t
 othello_game_all_valid_moves( othello_game_t const * game );
 
-/* Current player makes a move. Move specified by bitboard with single bit set
-   (the location of the move) */
+/* Start the next move.
+
+   If the game is over, returns `false` and sets the winner.
+   Otherwise, initializes the move context and returns true. */
 
 bool
-othello_game_make_move( othello_game_t * game,
-                        uint64_t         move );
+othello_game_start_move( othello_game_t const * game,
+                         othello_move_ctx_t *   ctx,
+                         uint8_t *              out_winner );
+
+/* Current player makes a move. Move specified by bitboard with single bit set
+   (the location of the move). Requires an initialized context. */
+
+bool
+othello_game_make_move( othello_game_t *           game,
+                        othello_move_ctx_t const * ctx,
+                        uint64_t                   move );
 
 /* Play the game till completion, returns winner. Modifies input game. */
 

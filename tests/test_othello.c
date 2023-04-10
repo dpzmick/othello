@@ -613,7 +613,12 @@ TEST( basic_flips )
                                 "...B...."
                                 "....B..." );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 4, 1 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 4, 1 ) );
     CHECK( valid );
 
     othello_game_t expect[1];
@@ -644,7 +649,12 @@ TEST( basic_flips )
                                 "...B...."
                                 "....B..." );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 3, 4 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 3, 4 ) );
     CHECK( valid );
 
     othello_game_t expect[1];
@@ -675,7 +685,12 @@ TEST( basic_flips )
                                 "...B...."
                                 "...W...." );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 3, 4 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 3, 4 ) );
     CHECK( valid );
 
     othello_game_t expect[1];
@@ -706,7 +721,12 @@ TEST( basic_flips )
                                 "...B...."
                                 "...B...." );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 3, 4 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 3, 4 ) );
     CHECK( !valid );
   }
 
@@ -723,7 +743,12 @@ TEST( basic_flips )
                                 "....B..."
                                 ".....B.." );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 2, 4 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 2, 4 ) );
     CHECK( valid );
 
     othello_game_t expect[1];
@@ -754,7 +779,12 @@ TEST( basic_flips )
                                 "........"
                                 "........" );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 4, 3 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 4, 3 ) );
     CHECK( valid );
 
     othello_game_t expect[1];
@@ -785,7 +815,12 @@ TEST( basic_flips )
                                 "........"
                                 ".....B.." );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 4, 6 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 4, 6 ) );
     CHECK( valid );
 
     othello_game_t expect[1];
@@ -816,7 +851,12 @@ TEST( basic_flips )
                                 ".....BB."
                                 ".....B.." );
 
-    bool valid = othello_game_make_move( game, othello_bit_mask( 4, 6 ) );
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 4, 6 ) );
     CHECK( valid );
 
     othello_game_t expect[1];

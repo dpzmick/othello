@@ -108,30 +108,36 @@ othello_board_print( othello_game_t const * game )
 }
 
 bool
-othello_game_is_over( othello_game_t const * game,
-                      uint8_t *              out_winner )
+othello_game_start_move( othello_game_t const * game,
+                         othello_move_ctx_t *   ctx,
+                         uint8_t *              out_winner )
 {
   uint8_t curr_player = game->curr_player;
 
-  uint64_t my_moves  = _all_valid_moves( game, curr_player );
+  uint64_t own_moves = _all_valid_moves( game, curr_player );
   uint64_t opp_moves = _all_valid_moves( game, !curr_player );
 
-  uint64_t my_moves_cnt  = (uint64_t)__builtin_popcountll( my_moves );
-  uint64_t opp_moves_cnt = (uint64_t)__builtin_popcountll( opp_moves );
+  uint64_t n_own_moves = (uint64_t)__builtin_popcountll( own_moves );
+  uint64_t n_opp_moves = (uint64_t)__builtin_popcountll( opp_moves );
 
-  /* game is over */
-  if( my_moves_cnt==0 && opp_moves_cnt==0 ) {
-    uint64_t white_stones = (uint64_t)__builtin_popcountll( game->white ); // FIXME don't redo
+  if( n_own_moves==0 && n_opp_moves==0 ) {
+    /* game is over */
+    uint64_t white_stones = (uint64_t)__builtin_popcountll( game->white );
     uint64_t black_stones = (uint64_t)__builtin_popcountll( game->black );
 
     if( white_stones > black_stones ) *out_winner = OTHELLO_BIT_WHITE;
     if( black_stones > white_stones ) *out_winner = OTHELLO_BIT_BLACK;
-    else                         *out_winner = OTHELLO_GAME_TIED;
+    else                              *out_winner = OTHELLO_GAME_TIED;
 
-    return true;
+    return false;
   }
   else {
-    return false;
+    /* game continues */
+    ctx->own_moves   = own_moves;
+    ctx->n_own_moves = n_own_moves;
+    ctx->opp_moves   = opp_moves;
+    ctx->n_opp_moves = n_opp_moves;
+    return true;
   }
 }
 
@@ -161,21 +167,27 @@ _extract_move( uint64_t   all_moves,
 }
 
 bool
-othello_game_make_move( othello_game_t * game,
-                        uint64_t         move )
+othello_game_make_move( othello_game_t *           game,
+                        othello_move_ctx_t const * ctx,
+                        uint64_t                   move )
 {
   if( move == OTHELLO_MOVE_PASS ) {
     game->curr_player = !game->curr_player;
     return true;
   }
 
-  if( 1 != __builtin_popcountll( move ) ) return false;
+  if( 1 != __builtin_popcountll( move ) ) {
+    return false;
+  }
 
-  if( (move & othello_game_all_valid_moves( game )) == 0 ) return false;
+  uint8_t    player    = game->curr_player;
+  uint64_t * own_p     = player==OTHELLO_BIT_WHITE ? &game->white : &game->black;
+  uint64_t * opp_p     = player==OTHELLO_BIT_WHITE ? &game->black : &game->white;
+  uint64_t   own_moves = ctx->own_moves;
 
-  uint8_t    player = game->curr_player;
-  uint64_t * own_p  = player==OTHELLO_BIT_WHITE ? &game->white : &game->black;
-  uint64_t * opp_p  = player==OTHELLO_BIT_WHITE ? &game->black : &game->white;
+  if( (move & own_moves) == 0 ) {
+    return false;
+  }
 
   uint64_t own = *own_p;
   uint64_t opp = *opp_p;
@@ -248,41 +260,27 @@ othello_game_random_playout( othello_game_t * game,
                              uint64_t         seed )
 {
   for( size_t cnt = 0;; cnt += 1 ) {
-    uint8_t curr_player = game->curr_player;
-
-    // not caling game over function here to avoid computing moves twice
-    // FIXME check if it would have inlined anyway?
-
-    uint64_t my_moves  = _all_valid_moves( game, curr_player );
-    uint64_t opp_moves = _all_valid_moves( game, !curr_player ); // FIXME don't ask for this unless my_moves_cnt==0?
-
-    uint64_t my_moves_cnt  = (uint64_t)__builtin_popcountll( my_moves );
-    uint64_t opp_moves_cnt = (uint64_t)__builtin_popcountll( opp_moves );
-
-    /* game is over */
-    if( my_moves_cnt==0 && opp_moves_cnt==0 ) {
-      uint64_t white_stones = (uint64_t)__builtin_popcountll( game->white ); // FIXME don't redo
-      uint64_t black_stones = (uint64_t)__builtin_popcountll( game->black );
-
-      if( white_stones > black_stones ) return OTHELLO_BIT_WHITE;
-      if( black_stones > white_stones ) return OTHELLO_BIT_BLACK;
-      else                              return OTHELLO_GAME_TIED;
+    uint8_t            winner;
+    othello_move_ctx_t ctx[1];
+    if( !othello_game_start_move( game, ctx, &winner ) ) {
+      return winner;
     }
 
-    /* have to pass, other player can still play */
-    if( my_moves_cnt==0 ) {
-      bool valid = othello_game_make_move( game, OTHELLO_MOVE_PASS );
-      if( !valid ) Fail( "tried to make invalid move" );
+    uint64_t own_moves   = ctx->own_moves;
+    uint64_t n_own_moves = ctx->n_own_moves;
 
+    if( n_own_moves==0 ) {
+      bool valid = othello_game_make_move( game, ctx, OTHELLO_MOVE_PASS );
+      if( !valid ) Fail( "tried to make invalid move" );
       continue;
     }
 
     // pick a move at random.
     // FIXME modulo isn't great
-    uint64_t rand_move_idx = hash_u64( seed+cnt ) % my_moves_cnt;
-    uint64_t move          = keep_ith_set_bit( my_moves, rand_move_idx );
+    uint64_t rand_move_idx = hash_u64( seed+cnt ) % n_own_moves;
+    uint64_t move          = keep_ith_set_bit( own_moves, rand_move_idx );
 
-    bool valid = othello_game_make_move( game, move );
+    bool valid = othello_game_make_move( game, ctx, move );
     if( !valid ) Fail( "tried to make invalid move" );
   }
 }

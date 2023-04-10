@@ -104,7 +104,10 @@ run_all_games_in_file( wthor_file_t const * file,
 
     // try to play out the game in the file
     uint8_t winner = (uint8_t)-1;
-    for( size_t move_idx=0; !othello_game_is_over( game, &winner ); ++move_idx ) {
+    for( size_t move_idx=0;; ++move_idx ) {
+      othello_move_ctx_t ctx[1];
+      if( !othello_game_start_move( game, ctx, &winner ) ) break;
+
       if( move_idx>=60 ) {
         /* Some of the games in the file seem to not have finished by the end of
            the fixed 60 move allotment. They do not have a winner as they are
@@ -121,7 +124,7 @@ run_all_games_in_file( wthor_file_t const * file,
 
       /* Some files seem to have an explict pass byte? */
       if( move_byte == 0 ) {
-        bool valid = othello_game_make_move( game, OTHELLO_MOVE_PASS );
+        bool valid = othello_game_make_move( game, ctx, OTHELLO_MOVE_PASS );
         if( !valid ) Fail( "tried to make invalid move" );
         continue; // continue to next byte
       }
@@ -132,17 +135,19 @@ run_all_games_in_file( wthor_file_t const * file,
          Kinda irritating that we have to compute this move mask on every move
          so many times; maybe should restructure this? */
 
-      uint64_t moves = othello_game_all_valid_moves( game );
-      if( moves==0 ) {
-        bool valid = othello_game_make_move( game, OTHELLO_MOVE_PASS );
+      if( ctx->n_own_moves == 0 ) {
+        bool valid = othello_game_make_move( game, ctx, OTHELLO_MOVE_PASS );
         if( !valid ) Fail( "tried to make invalid move" );
-        // do not continue, the current move applies to next player
+        /* do not continue, the current move applies to next player */
       }
+
+      /* reset move ctx since we switched players */
+      if( !othello_game_start_move( game, ctx, &winner ) ) Fail( "game should not be over" );
 
       uint8_t x, y;
       decode_move( move_byte, &x, &y );
 
-      bool valid = othello_game_make_move( game, othello_bit_mask( x, y ) );
+      bool valid = othello_game_make_move( game, ctx, othello_bit_mask( x, y ) );
       if( !valid ) {
         othello_board_print( game );
         Fail( "tried to make invalid move" );

@@ -84,7 +84,7 @@ game_tree_get( game_tree_t *          tree,
 
     // boards always evolve by adding new stones
     // a cell is "empty" if it contains an earlier game state that we no longer care about
-    if( allow_insert && min_stones > node_game_popcnt ) {
+    if( allow_insert && node_game_popcnt < min_stones ) {
       // reset node and use it
       *node->game    = *game;
       node->win_cnt  = 0;
@@ -133,6 +133,8 @@ mcts_state_init( mcts_state_t * ret,
   ret->play_as = play_as;
   ret->seed    = seed;
 
+  // FIXME assuming that trials >= number of possible moves
+
   game_tree_init( ret->tree, n_nodes );
 }
 
@@ -140,12 +142,13 @@ mcts_state_init( mcts_state_t * ret,
    Used _internally_. The external selection runs many trials */
 
 static uint64_t
-ucb_select_move( mcts_state_t *           mcts,
-                 othello_game_t const *   game,
-                 game_tree_node_t const * game_node,
-                 uint64_t                 valid_moves,
-                 uint64_t                 n_moves,
-                 uint64_t                 min_stones )
+ucb_select_move( mcts_state_t *             mcts,
+                 othello_game_t const *     game,
+                 othello_move_ctx_t const * ctx,
+                 game_tree_node_t const *   game_node,
+                 uint64_t                   valid_moves,
+                 uint64_t                   n_moves,
+                 uint64_t                   min_stones )
 {
   game_tree_t * tree          = mcts->tree;
   uint64_t      best_move     = 0;
@@ -159,7 +162,7 @@ ucb_select_move( mcts_state_t *           mcts,
     othello_game_t updated_game[1] = { *game };
 
     /* apply the new move to the game */
-    bool valid = othello_game_make_move( updated_game, move );
+    bool valid = othello_game_make_move( updated_game, ctx, move );
     if( UNLIKELY( !valid ) ) Fail( "attempted to apply invalid move" );
 
     /* Lookup the state of the game. */
@@ -193,55 +196,65 @@ ucb_select_move( mcts_state_t *           mcts,
 }
 
 uint64_t
-mcts_select_move( mcts_state_t *         mcts,
-                  othello_game_t const * game )
+mcts_select_move( mcts_state_t *             mcts,
+                  othello_game_t const *     game,
+                  othello_move_ctx_t const * ctx )
 {
   /* assumes that the game is some game from later in the game than boards we've
      already seen */
 
   if( game->curr_player!=mcts->play_as ) Fail( "Computer only plays as %d", mcts->play_as );
 
-  game_tree_t * tree       = mcts->tree;
-  size_t        trials     = mcts->trials;
-  uint64_t      min_stones = othello_game_popcount( game );
-  uint64_t      moves      = othello_game_all_valid_moves( game );
-  uint64_t      n_moves    = (uint64_t)__builtin_popcountll( moves );
+  game_tree_t *      tree       = mcts->tree;
+  size_t             trials     = mcts->trials;
+  uint64_t           min_stones = othello_game_popcount( game );
+
+  uint64_t moves   = ctx->own_moves;
+  uint64_t n_moves = ctx->n_own_moves;
   if( n_moves==0 ) return OTHELLO_MOVE_PASS;
 
   game_tree_node_t * curr = game_tree_get( tree, game, min_stones, true );
   if( !curr ) Fail( "Out of space in hash table" );
 
   for( size_t trial = 0; trial < trials; ++trial ) {
-    uint64_t move = ucb_select_move( mcts, game, curr, moves, n_moves, min_stones );
+    uint64_t move = ucb_select_move( mcts, game, ctx, curr, moves, n_moves, min_stones );
 
     othello_game_t top = *game;
-    othello_game_make_move( &top, move );
+    othello_game_make_move( &top, ctx, move );
 
     /* Walk the path from this moved until we hit a child node that hasn't been
        expanded yet. Note that max path length is 64 moves. */
 
-    uint8_t        winner;
-    othello_game_t path[64]        = { top };
-    size_t         n_moves_in_path = 1;
+    uint8_t            winner;
+    othello_move_ctx_t top_ctx[1];
+    othello_game_t     path[64]        = { top };
+    size_t             n_moves_in_path = 1;
 
     while( 1 ) {
       top = path[n_moves_in_path-1];
-      if( othello_game_is_over( &top, &winner ) ) break;
+      if( !othello_game_start_move( &top, top_ctx, &winner )) {
+        /* someone won */
+        break;
+      }
+
+      if( n_moves_in_path >= 64 ) Fail( "too many moves" );
 
       game_tree_node_t * path_node = game_tree_get( tree, &top, min_stones, true );
       if( !path_node ) Fail( "Out of space in hash table" );
 
       if( path_node->game_cnt > 0 ) {
         /* we've been here before, add a new child */
-        uint64_t path_moves   = othello_game_all_valid_moves( &top );
-        uint64_t path_n_moves = (uint64_t)__builtin_popcountll( path_moves );
+        uint64_t path_moves   = top_ctx->own_moves;
+        uint64_t path_n_moves = top_ctx->n_own_moves;
 
         if( path_n_moves==0 ) {
-          othello_game_make_move( &top, OTHELLO_MOVE_PASS );
+          bool valid = othello_game_make_move( &top, top_ctx, OTHELLO_MOVE_PASS );
+          if( !valid ) Fail( "invalid move" );
         }
         else {
-          uint64_t move = ucb_select_move( mcts, &top, path_node, path_moves, path_n_moves, min_stones );
-          othello_game_make_move( &top, move );
+          uint64_t move = ucb_select_move( mcts, &top, top_ctx, path_node, path_moves, path_n_moves, min_stones );
+          bool valid = othello_game_make_move( &top, top_ctx, move );
+          if( !valid ) Fail( "invalid move" );
         }
       }
       else {
@@ -254,10 +267,12 @@ mcts_select_move( mcts_state_t *         mcts,
       path[n_moves_in_path++] = top;
     }
 
-    /* /update the entire path with the winner */
+    /* update the entire path with the winner */
 
     for( size_t i = 0; i < n_moves_in_path; ++i ) {
-      game_tree_node_t * path_node = game_tree_get( tree, &path[i], min_stones, false );
+      // FIXME make sure we actually for sure expand all children
+      // we aren't right now
+      game_tree_node_t * path_node = game_tree_get( tree, &path[i], min_stones, true );
       if( !path_node ) Fail( "impossible" );
 
       path_node->win_cnt  += winner==mcts->play_as;
@@ -276,7 +291,7 @@ mcts_select_move( mcts_state_t *         mcts,
     othello_game_t updated_game[1] = { *game };
 
     /* apply the new move to the game */
-    bool valid = othello_game_make_move( updated_game, move );
+    bool valid = othello_game_make_move( updated_game, ctx, move );
     if( UNLIKELY( !valid ) ) Fail( "attempted to apply invalid move" );
 
     game_tree_node_t * move_node = game_tree_get( tree, updated_game, min_stones, false );

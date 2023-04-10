@@ -4,7 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef struct othello_game othello_game_t; /* forward decl */
+typedef struct othello_game     othello_game_t; /* forward decl */
+typedef struct othello_move_ctx othello_move_ctx_t; /* forward decl */
 
 /* A MCTS player for the othello game */
 
@@ -21,5 +22,6 @@ mcts_state_init( mcts_state_t * state,
                  size_t         n_boards );
 
 uint64_t
-mcts_select_move( mcts_state_t *         mcts,
-                  othello_game_t const * game );
+mcts_select_move( mcts_state_t *             mcts,
+                  othello_game_t const *     game,
+                  othello_move_ctx_t const * ctx );
