@@ -193,7 +193,7 @@ mcts_select_move( mcts_state_t *         mcts,
   size_t   trials     = mcts->trials;
   uint64_t min_stones = othello_game_popcount( game );
   uint64_t moves      = othello_game_all_valid_moves( game );
-  uint64_t n_moves    = (size_t)__builtin_popcountll( moves );
+  uint64_t n_moves    = (uint64_t)__builtin_popcountll( moves );
   if( n_moves==0 ) return OTHELLO_MOVE_PASS;
 
   node_t * curr = mcts_get( mcts, game, min_stones, true );

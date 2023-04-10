@@ -95,7 +95,7 @@ nn_select_move( othello_game_t const * game )
   if( game->curr_player!=OTHELLO_BIT_WHITE ) Fail( "Computer only plays as white" );
 
   uint64_t moves      = othello_game_all_valid_moves( game );
-  uint64_t n_moves    = (size_t)__builtin_popcountll( moves );
+  uint64_t n_moves    = (uint64_t)__builtin_popcountll( moves );
   if( n_moves==0 ) return OTHELLO_MOVE_PASS;
 
   uint64_t best_move  = OTHELLO_MOVE_PASS;

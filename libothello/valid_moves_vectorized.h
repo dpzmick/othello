@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#undef __ARM_NEON__
 #ifdef __ARM_NEON__
 #include <arm_neon.h>
 #else
@@ -9,15 +10,10 @@ typedef int64_t  int64x2_t  __attribute__((vector_size(128)));
 
 static inline uint64x2_t vandq_u64( uint64x2_t a, uint64x2_t b ) { return a & b; }
 static inline uint64x2_t vorrq_u64( uint64x2_t a, uint64x2_t b ) { return a | b; }
-
-static inline uint64x2_t vshlq_u64( uint64x2_t a,  int64x2_t b ) {
-  if( b[0] < 0 && b[1] < 0 ) return a >> (-b);
-  if( b[0] > 0 && b[1] > 0 ) return a << b;
-  Fail( "help" );
-}
-// no right shift, just left shift negative
+static inline uint64x2_t vshlq_u64( uint64x2_t a,  int64x2_t b ) { return a << b; }
 #endif
 
+// FIXME must be a better way to do this?
 static inline bool
 any_non_zero( uint64x2_t v )
 {
@@ -28,7 +24,7 @@ static inline uint64_t
 _gen_shift_moves_partial( uint64x2_t owns,
                           uint64x2_t opps,
                           uint64x2_t empties,
-                          uint64x2_t shifts,
+                          int64x2_t  shifts,
                           uint64x2_t masks )
 {
   /* start with every space which:
@@ -84,24 +80,24 @@ _all_valid_moves( othello_game_t const * game,
   uint64x2_t opps    = { opp, opp };
   uint64x2_t empties = { empty, empty };
 
-  uint64x2_t shifts_a = {
-    UINT64_C(1), /* left */
-    UINT64_C(8), /* up */
+  int64x2_t shifts_a = {
+    INT64_C(1), /* left */
+    INT64_C(8), /* up */
   };
 
-  uint64x2_t shifts_b = {
-    UINT64_C(9), /* up-left */
-    UINT64_C(7), /* up-right */
+  int64x2_t shifts_b = {
+    INT64_C(9), /* up-left */
+    INT64_C(7), /* up-right */
   };
 
-  uint64x2_t shifts_c = {
-    UINT64_C(-1), /* right */
-    UINT64_C(-8), /* down */
+  int64x2_t shifts_c = {
+    INT64_C(-1), /* right */
+    INT64_C(-8), /* down */
   };
 
-  uint64x2_t shifts_d = {
-    UINT64_C(-9), /* down-left */
-    UINT64_C(-7), /* down-left */
+  int64x2_t shifts_d = {
+    INT64_C(-9), /* down-left */
+    INT64_C(-7), /* down-left */
   };
 
   uint64x2_t masks_a = {
