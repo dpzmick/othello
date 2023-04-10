@@ -1,17 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
-
-#undef __ARM_NEON__
-#ifdef __ARM_NEON__
 #include <arm_neon.h>
-#else
-typedef uint64_t uint64x2_t __attribute__((vector_size(128)));
-typedef int64_t  int64x2_t  __attribute__((vector_size(128)));
-
-static inline uint64x2_t vandq_u64( uint64x2_t a, uint64x2_t b ) { return a & b; }
-static inline uint64x2_t vorrq_u64( uint64x2_t a, uint64x2_t b ) { return a | b; }
-static inline uint64x2_t vshlq_u64( uint64x2_t a,  int64x2_t b ) { return a << b; }
-#endif
 
 // FIXME must be a better way to do this?
 static inline bool

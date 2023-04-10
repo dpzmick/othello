@@ -7,8 +7,12 @@
 #include <stdio.h>
 #include <string.h>
 
-//#include "valid_moves_serial.h"
-#include "valid_moves_vectorized.h"
+#ifdef __ARM_NEON__
+#include "valid_moves_vectorized_arm.h"
+#else
+// FIXME do intel too
+#include "valid_moves_serial.h"
+#endif
 
 void
 othello_game_init( othello_game_t * game )
