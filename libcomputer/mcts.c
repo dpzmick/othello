@@ -70,6 +70,11 @@ game_tree_get( game_tree_t *          tree,
   game_tree_node_t * ret     = NULL;
   size_t             n_loops = 0;
 
+#if 0
+  if( min_stones < tree->max_min_stones ) Fail( "min stones cannot go backwards" );
+  tree->max_min_stones = MAX( tree->max_min_stones, min_stones );
+#endif
+
   while( 1 ) {
     game_tree_node_t * node             = &nodes[slot];
     othello_game_t *   node_game        = node->game;
@@ -107,6 +112,119 @@ done:
   tree->n_loops += n_loops;
   return ret;
 }
+
+// -------------------
+
+#include "nn.h"
+
+static void
+dump_json( FILE *                 f,
+           game_tree_t *          tree,
+           uint64_t               min_stones,
+           othello_game_t const * root,
+           uint64_t               parent_game_cnt,
+           bool                   first )
+{
+  game_tree_node_t const * node = game_tree_get( tree, root, min_stones, false );
+  if( !node ) return;
+
+  if( !first ) fprintf( f, ", " );
+  fprintf( f, "\n{" );
+  fprintf( f, "\"wins\": %llu", node->win_cnt );
+  fprintf( f, ",\"games\": %llu", node->game_cnt );
+  if( parent_game_cnt ){
+    float win_cnt  = (float)node->win_cnt;
+    float game_cnt = (float)node->game_cnt;
+
+    float criteria = win_cnt/game_cnt
+      + sqrtf( 2.0f ) * sqrtf( log2f( (float)parent_game_cnt ) / game_cnt );
+    fprintf( f, ",\"criteria\": %0.3f", (double)criteria );
+
+    float nn = pred_board_quality( root->white, root->black );
+    fprintf( f, ",\"nn\": %0.3f", (double)nn );
+  }
+  fprintf( f, ",\"board\": [" );
+
+  // FIXME add UCB score to children
+
+  uint64_t moves = othello_game_all_valid_moves( root );
+  for( size_t y = 0; y < 8; ++y ) {
+
+    if( y!=0 ) fprintf( f, ", " );
+    fprintf( f, "[" );
+    for( size_t x = 0; x < 8; ++x ) {
+      if( x!=0 ) fprintf( f, ", " );
+
+      uint64_t mask = othello_bit_mask(x,y);
+      uint8_t bit_white = (root->white & mask) != 0;
+      uint8_t bit_black = (root->black & mask) != 0;
+      bool    is_move   = moves&mask;
+
+      if( bit_white && bit_black ) {
+        fprintf( f, "\"X\"" ); // invalid
+      }
+      else if( bit_white ) {
+        fprintf( f, "\"W\"" );
+      }
+      else if( bit_black ) {
+        fprintf( f, "\"B\"" );
+      }
+      else {
+        if( is_move ) {
+          fprintf( f, "\".\"" );
+        }
+        else {
+          fprintf( f, "\" \"" );
+        }
+      }
+    }
+    fprintf( f, "]" );
+  }
+  fprintf( f, "]" );
+
+  /* children defined by moves, check if we have any */
+
+  uint8_t            winner;
+  othello_move_ctx_t ctx[1];
+  othello_game_start_move( root, ctx, &winner );
+
+  fprintf( f, ", \"children\": [" );
+
+  bool first_child = true;
+  for( size_t i = 0; i < ctx->n_own_moves; ++i ) {
+    othello_game_t upd   = *root;
+    uint64_t       move  = keep_ith_set_bit( ctx->own_moves, i );
+    bool           valid = othello_game_make_move( &upd, ctx, move );
+    if( UNLIKELY( !valid ) ) Fail( "move is not valid" );
+
+    game_tree_node_t const * node = game_tree_get( tree, &upd, min_stones, false );
+    if( !node ) continue;
+
+    // hopefully tree not too deep!
+    dump_json( f, tree, min_stones, &upd, node->game_cnt, first_child );
+    first_child = false;
+  }
+
+  fprintf( f, "]" );
+  fprintf( f, "}" );
+}
+
+static void
+dump_tree( game_tree_t *          tree,
+           uint64_t               min_stones,
+           othello_game_t const * root )
+{
+  /* char * buf; */
+  /* size_t n; */
+  /* FILE * f = open_memstream( &buf, &n ); */
+  FILE * f = fopen( "data.js", "w" );
+  fprintf( f, "var DATA = " );
+  dump_json( f, tree, min_stones, root, 0, true );
+  fclose( f );
+
+  /* return buf; */
+}
+
 
 // ---------------
 
@@ -170,8 +288,7 @@ select_best_child( game_tree_t *              tree,
 
     game_tree_node_t * child_node = game_tree_get( tree, &child, min_stones, false );
     if( !child_node ) {
-      best_child = child;
-      break;
+      return child;
     }
 
     if( UNLIKELY( child_node->game_cnt==0 ) ) {
@@ -223,10 +340,7 @@ run_trial( mcts_state_t *         mcts,
       break;
     }
 
-    /* If this node ends the game, we've fully explored some path. Return this
-       node as our unexplored node so that we'll "playout" from here (figure out
-       the winner), and update the paths. Unlikely because most games are not
-       over. */
+    // FIXME explain why breaking early makes sense here
 
     if( UNLIKELY( !othello_game_start_move( stk_game, stk_game_ctx, &stk_winner ) ) ) {
       unexplored_node = stk_node;
@@ -254,26 +368,6 @@ run_trial( mcts_state_t *         mcts,
   }
 }
 
-#if 0
-static void
-dump_tree( game_tree_t const * tree,
-           uint64_t            min_stones )
-{
-  for( size_t i = 0; i < tree->n_nodes; ++i ) {
-    game_tree_node_t const * node             = &tree->nodes[i];
-    othello_game_t const *   node_game        = node->game;
-    size_t                   node_game_popcnt = othello_game_popcount( node_game );
-
-    if( node_game_popcnt < min_stones ) continue;
-    if( node->win_cnt == 0 ) continue;
-
-    printf( "----------------------\n" );
-    othello_board_print( node_game );
-    printf( "wins: %llu, cnt: %llu\n", node->win_cnt, node->game_cnt );
-  }
-}
-#endif
-
 uint64_t
 mcts_select_move( mcts_state_t *             mcts,
                   othello_game_t const *     game,
@@ -291,11 +385,18 @@ mcts_select_move( mcts_state_t *             mcts,
   if( UNLIKELY( game->curr_player!=mcts->play_as ) ) Fail( "Computer only plays as %d", mcts->play_as );
   if( n_moves==0 ) return OTHELLO_MOVE_PASS;
 
-  /* Run enough trials to ensure we expand all immediate children */
+  /* Run enough trials to ensure we expand all immediate children. Must be at
+     least n_moves+1. +1 to explore _this node_ if never explored. */
+
   uint64_t now = wallclock();
-  for( size_t trial = 0; trial < MAX( trials, n_moves ); ++trial ) {
+  for( size_t trial = 0; trial < MAX( trials, n_moves+1 ); ++trial ) {
     run_trial( mcts, game, hash_u64( trial + now ) );
   }
+
+  /* if( othello_game_popcount( game ) > 20 ) { */
+  /*   dump_tree( tree, min_stones, game ); */
+  /*   Fail( "bailing" ); */
+  /* } */
 
   uint64_t best_move     = OTHELLO_MOVE_PASS;
   float    best_criteria = -1;
@@ -309,12 +410,10 @@ mcts_select_move( mcts_state_t *             mcts,
     bool valid = othello_game_make_move( updated_game, ctx, move );
     if( UNLIKELY( !valid ) ) Fail( "attempted to apply invalid move" );
 
-    /* We might not have expanded all of our children */
+    /* Doing at least n_moves trials should ensure we always expand all children */
     game_tree_node_t * move_node = game_tree_get( tree, updated_game, min_stones, false );
     if( UNLIKELY( !move_node ) ) {
-      /* printf( "failed at: %llu %llu\n", updated_game->white, updated_game->black ); */
-      /* othello_board_print( game ); */
-      /* othello_board_print( updated_game ); */
+      dump_tree( tree, min_stones, game );
       Fail( "didn't expand all children" );
     }
 
@@ -326,7 +425,6 @@ mcts_select_move( mcts_state_t *             mcts,
     }
   }
 
-  /* dump_tree( tree, min_stones ); */
 
   return best_move;
 }

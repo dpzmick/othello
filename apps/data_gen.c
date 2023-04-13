@@ -27,6 +27,7 @@
 #include "../datastruct/game_set.h"
 #include "../libcommon/common.h"
 #include "../libcommon/hash.h"
+#include "../libcomputer/mcts.h"
 #include "../libothello/othello.h"
 #include "../misc/wthor.h"
 
@@ -243,71 +244,111 @@ int main( void )
   FILE * pred_file = fopen( "training.pred", "w" );
   if( !pred_file ) Fail( "Failed to open pred file" );
 
+  mcts_state_t * black_player_state;
+  mcts_state_t * white_player_state;
+
   st = wallclock();
-  #pragma omp parallel for
-  for( size_t i = 0; i < game_set->n_slots; ++i ) {
-    othello_game_t const * slot_game = &game_set->slots[i];
-    if( slot_game->curr_player == OTHELLO_GAME_SET_SENTINEL ) continue;
+  #pragma omp parallel private(white_player_state, black_player_state)
+  {
+    black_player_state = malloc( mcts_state_size( 8192 ) );
+    if( !black_player_state ) Fail( "failed to allocate" );
 
-    double wins = 0;
+    white_player_state = malloc( mcts_state_size( 8192 ) );
+    if( !black_player_state ) Fail( "failed to allocate" );
 
-    for( size_t trial = 0; trial < N_TRIALS; ++trial ) {
-      othello_game_t game[1] = { *slot_game };
+    #pragma omp for
+    for( size_t i = 0; i < game_set->n_slots; ++i ) {
+      othello_game_t const * slot_game = &game_set->slots[i];
+      if( slot_game->curr_player == OTHELLO_GAME_SET_SENTINEL ) continue;
 
-      uint8_t winner = othello_game_random_playout( game, hash_u64( trial ) );
-      if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
-      if( winner==OTHELLO_GAME_TIED ) wins += 0.5;
+      double wins = 0;
 
-      trials_run += 1;
+      for( size_t trial = 0; trial < N_TRIALS; ++trial ) {
+#if 0
+        othello_game_t game[1] = { *slot_game };
 
-      #pragma omp critical
-      if( trials_run%100000 == 0 ) {
-        uint64_t now            = wallclock();
-        double   sec            = (double)(now-st)/1e9;
-        double   trials_per_sec = (double)trials_run/sec;
-        double   sec_remain     = (double)(total_trials-trials_run)/trials_per_sec;
+        uint8_t winner = othello_game_random_playout( game, hash_u64( trial ) );
+        if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
+        if( winner==OTHELLO_GAME_TIED ) wins += 0.5;
+#else
+        mcts_state_init( black_player_state, 500, OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), 8192 );
+        mcts_state_init( white_player_state, 500, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 );
+        othello_game_t game[1] = { *slot_game };
 
-        printf( "On trial %zu/%zu (%0.3f %%). Running %0.3f trials/sec. Est %0.3f min remain\n",
-                trials_run, total_trials, (double)trials_run/(double)total_trials * 100.0,
-                trials_per_sec, sec_remain/60.0 );
+        uint8_t winner;
+        while( 1 ) {
+          othello_move_ctx_t ctx[1];
+          uint64_t           move;
+          bool               valid;
+
+          if( !othello_game_start_move( game, ctx, &winner ) ) break;
+
+          mcts_state_t * which = game->curr_player==OTHELLO_BIT_WHITE ?
+            white_player_state : black_player_state;
+
+          move = mcts_select_move( which, game, ctx );
+          valid = othello_game_make_move( game, ctx, move );
+          if( !valid ) Fail( "move invalid" );
+        }
+
+        if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
+        if( winner==OTHELLO_GAME_TIED ) wins += 0.5;
+#endif
+
+        trials_run += 1;
+
+#pragma omp critical
+        if( trials_run%100000 == 0 ) {
+          uint64_t now            = wallclock();
+          double   sec            = (double)(now-st)/1e9;
+          double   trials_per_sec = (double)trials_run/sec;
+          double   sec_remain     = (double)(total_trials-trials_run)/trials_per_sec;
+
+          printf( "On trial %zu/%zu (%0.3f %%). Running %0.3f trials/sec. Est %0.3f min remain\n",
+                  trials_run, total_trials, (double)trials_run/(double)total_trials * 100.0,
+                  trials_per_sec, sec_remain/60.0 );
+        }
       }
+
+      /* input to NN is a 128 element flattened out floating point array */
+
+      float  board_out[128] = { 0 };
+      size_t idx = 0;
+
+      for( size_t y = 0; y < 8; ++y ) {
+        for( size_t x = 0; x < 8; ++x ) {
+          bool occupied = slot_game->white & othello_bit_mask( x, y );
+          board_out[idx++] = occupied ? 1.0f : 0.0f;
+        }
+      }
+
+      for( size_t y = 0; y < 8; ++y ) {
+        for( size_t x = 0; x < 8; ++x ) {
+          bool occupied = slot_game->black & othello_bit_mask( x, y );
+          board_out[idx++] = occupied ? 1.0f : 0.0f;
+        }
+      }
+
+      assert( idx == 128 );
+
+#pragma omp critical
+      {
+        if( 1!=fwrite( board_out, sizeof(board_out), 1, board_file ) ) {
+          Fail( "Failed to write to output file" );
+        }
+
+        float pred = (float)( (float)wins/(float)N_TRIALS );
+
+        if( 1!=fwrite( &pred, sizeof(pred), 1, pred_file ) ) {
+          Fail( "Failed to write to output file" );
+        }
+      }
+
+      //if( trials_run > 2000000 ) break;
     }
 
-    /* input to NN is a 128 element flattened out floating point array */
-
-    float  board_out[128] = { 0 };
-    size_t idx = 0;
-
-    for( size_t y = 0; y < 8; ++y ) {
-      for( size_t x = 0; x < 8; ++x ) {
-        bool occupied = slot_game->white & othello_bit_mask( x, y );
-        board_out[idx++] = occupied ? 1.0f : 0.0f;
-      }
-    }
-
-    for( size_t y = 0; y < 8; ++y ) {
-      for( size_t x = 0; x < 8; ++x ) {
-        bool occupied = slot_game->black & othello_bit_mask( x, y );
-        board_out[idx++] = occupied ? 1.0f : 0.0f;
-      }
-    }
-
-    assert( idx == 128 );
-
-    #pragma omp critical
-    {
-      if( 1!=fwrite( board_out, sizeof(board_out), 1, board_file ) ) {
-        Fail( "Failed to write to output file" );
-      }
-
-      float pred = (float)( (float)wins/(float)N_TRIALS );
-
-      if( 1!=fwrite( &pred, sizeof(pred), 1, pred_file ) ) {
-        Fail( "Failed to write to output file" );
-      }
-    }
-
-    //if( trials_run > 2000000 ) break;
+    free( white_player_state );
+    free( black_player_state );
   }
 
   fclose( board_file );

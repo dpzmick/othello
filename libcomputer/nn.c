@@ -58,7 +58,7 @@ sigmoid( float * x,
   }
 }
 
-static float
+float
 pred_board_quality( uint64_t white,
                     uint64_t black )
 {

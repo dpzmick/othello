@@ -10,3 +10,7 @@ typedef struct othello_move_ctx othello_move_ctx_t; /* forward decl */
 uint64_t
 nn_select_move( othello_game_t const *     game,
                 othello_move_ctx_t const * ctx );
+
+float
+pred_board_quality( uint64_t white,
+                    uint64_t black );
