@@ -116,6 +116,7 @@ done:
 // -------------------
 
 #include "nn.h"
+#include <inttypes.h>
 
 static void
 dump_json( FILE *                 f,
@@ -130,8 +131,8 @@ dump_json( FILE *                 f,
 
   if( !first ) fprintf( f, ", " );
   fprintf( f, "\n{" );
-  fprintf( f, "\"wins\": %llu", node->win_cnt );
-  fprintf( f, ",\"games\": %llu", node->game_cnt );
+  fprintf( f, "\"wins\": %" PRIu64, node->win_cnt );
+  fprintf( f, ",\"games\": %" PRIu64, node->game_cnt );
   if( parent_game_cnt ){
     float win_cnt  = (float)node->win_cnt;
     float game_cnt = (float)node->game_cnt;
