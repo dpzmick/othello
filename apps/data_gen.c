@@ -235,7 +235,8 @@ int main( void )
   /* For each game in the game set, run a bunch of random trials and generate
      some training data */
 
-  size_t trials_run = 0;
+  size_t turns_played = 0;
+  size_t trials_run   = 0;
   size_t total_trials = n_unique_boards*N_TRIALS;
 
   FILE * board_file = fopen( "training.boards", "w" );
@@ -289,6 +290,8 @@ int main( void )
           move = mcts_select_move( which, game, ctx );
           valid = othello_game_make_move( game, ctx, move );
           if( !valid ) Fail( "move invalid" );
+
+          turns_played += 1;
         }
 
         if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
@@ -298,15 +301,16 @@ int main( void )
         trials_run += 1;
 
 #pragma omp critical
-        if( trials_run%100000 == 0 ) {
+        if( trials_run%1000 == 0 ) {
           uint64_t now            = wallclock();
           double   sec            = (double)(now-st)/1e9;
           double   trials_per_sec = (double)trials_run/sec;
+          double   turns_per_sec  = (double)turns_played/sec;
           double   sec_remain     = (double)(total_trials-trials_run)/trials_per_sec;
 
-          printf( "On trial %zu/%zu (%0.3f %%). Running %0.3f trials/sec. Est %0.3f min remain\n",
+          printf( "On trial %zu/%zu (%0.3f %%). Running %0.3f trials/sec (%0.3f turns/sec). Est %0.3f min remain\n",
                   trials_run, total_trials, (double)trials_run/(double)total_trials * 100.0,
-                  trials_per_sec, sec_remain/60.0 );
+                  trials_per_sec, turns_per_sec, sec_remain/60.0 );
         }
       }
 
