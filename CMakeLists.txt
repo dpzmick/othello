@@ -7,7 +7,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer -fstrict-aliasing -f
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 
 if (NOT EMSCRIPTEN)
-  #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -mtune=native")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -mtune=native")
 endif()
 
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -g")
