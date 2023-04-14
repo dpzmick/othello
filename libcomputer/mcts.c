@@ -29,35 +29,38 @@ typedef struct {
 } game_tree_node_t;
 
 typedef struct {
-  size_t           n_nodes;
-  size_t           mask;
-  size_t           n_gets;      // stats
-  size_t           n_loops;     // stats
-  game_tree_node_t nodes[];
+  size_t n_nodes;
+  size_t mask;
+  size_t n_gets;                // stats
+  size_t n_loops;               // stats
+  size_t n_null_rets;           // stats
+  game_tree_node_t __attribute__ ((aligned (32))) nodes[];
 } game_tree_t;
 
-static inline size_t
+static size_t
 game_tree_size( size_t n_nodes )
 {
   n_nodes = (size_t)next_pow2( n_nodes );
   return sizeof(game_tree_t) + n_nodes*sizeof(game_tree_node_t);
 }
 
-static inline void
+static void
 game_tree_init( game_tree_t * tree,
                 size_t        n_nodes )
 {
-  tree->n_nodes = (size_t)next_pow2( n_nodes );
-  tree->mask    = tree->n_nodes - 1;
-  tree->n_gets  = 0;
-  tree->n_loops = 0;
+  tree->n_nodes     = (size_t)next_pow2( n_nodes );
+  tree->mask        = tree->n_nodes - 1;
+  tree->n_gets      = 0;
+  tree->n_loops     = 0;
+  tree->n_null_rets = 0;
 
   memset( tree->nodes, 0, sizeof(game_tree_node_t)*tree->n_nodes );
 }
 
 /* node is valid until the next call to get */
 
-static inline game_tree_node_t *
+static game_tree_node_t *
+__attribute__((noinline))
 game_tree_get( game_tree_t *          tree,
                othello_game_t const * game,
                uint64_t               min_stones,
@@ -102,6 +105,7 @@ game_tree_get( game_tree_t *          tree,
     slot = (slot+1) & mask;
 
     if( UNLIKELY( slot == (hash & mask) ) ) { // out of space, we wrapped around
+      tree->n_null_rets += 1;
       ret = NULL;
       goto done;
     }
@@ -256,6 +260,19 @@ mcts_state_init( mcts_state_t * ret,
   game_tree_init( ret->tree, n_nodes );
 }
 
+void
+mcts_print_stats( mcts_state_t const * mcts,
+                  double               sec )
+{
+  (void)sec;
+  double gets  = (double)mcts->tree->n_gets;
+  double loops = (double)mcts->tree->n_loops;
+
+  printf( "%zu loops, %zu gets, %zu null rets, %0.3f loops/get\n",
+          mcts->tree->n_loops, mcts->tree->n_gets, mcts->tree->n_null_rets,
+          loops/gets );
+}
+
 static othello_game_t
 select_best_child( game_tree_t *              tree,
                    uint64_t                   min_stones,
@@ -281,19 +298,14 @@ select_best_child( game_tree_t *              tree,
     valid = othello_game_make_move( &child, parent_ctx, move );
     if( UNLIKELY( !valid ) ) Fail( "move is not valid" );
 
-    /* Lookup this child node in the map. Note that we do not allow insertion
-       here. If the node doesn't exist, we'll push it to stack and exit the
-       loop on the next iteration. We could short circuit this to save the
-       double lookup, but leaving it around for clarity and a single exit
-       point. */
-
-    game_tree_node_t * child_node = game_tree_get( tree, &child, min_stones, false );
-    if( !child_node ) {
-      return child;
-    }
+    /* If we have never seen this child, select it */
+    game_tree_node_t * child_node = game_tree_get( tree, &child, min_stones, true );
+    if( !child_node ) Fail( "out of space in the hash table" );
 
     if( UNLIKELY( child_node->game_cnt==0 ) ) {
-      Fail( "unexpanded child should have failed lookup" );
+      /* could technically return the tree node here to save an extra loopup in
+         the outer loop */
+      return child;
     }
 
     float win_cnt  = (float)child_node->win_cnt;
@@ -340,8 +352,6 @@ run_trial( mcts_state_t *         mcts,
       unexplored_node = stk_node;
       break;
     }
-
-    // FIXME explain why breaking early makes sense here
 
     if( UNLIKELY( !othello_game_start_move( stk_game, stk_game_ctx, &stk_winner ) ) ) {
       unexplored_node = stk_node;

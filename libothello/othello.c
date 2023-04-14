@@ -21,8 +21,12 @@ othello_game_init( othello_game_t * game )
   memset( game, 0, sizeof(*game) ); // make sure padding bits are cleared
 
   game->curr_player = OTHELLO_BIT_BLACK; // black should probably be 0 FIXME
-  game->white = othello_bit_mask(3,3) | othello_bit_mask(4,4);
-  game->black = othello_bit_mask(3,4) | othello_bit_mask(4,3);
+  /* game->popcount    = 0; */
+  /* padding zeroed with memset */
+  game->white       = othello_bit_mask(3,3) | othello_bit_mask(4,4);
+  game->black       = othello_bit_mask(3,4) | othello_bit_mask(4,3);
+
+  /* additional padding (if any, shouldn't be) also is zeroed by memset */
 }
 
 void
@@ -53,10 +57,16 @@ bool
 othello_game_eq( othello_game_t const * a,
                  othello_game_t const * b )
 {
+#if 0
   /* there are padding bits in our struct, but we've always memset them to zero
      in initialization. Technically a lil UB */
 
   return 0==memcmp( a, b, sizeof(*a) );
+#else
+  return a->white == b->white
+    && a->black == b->black
+    && a->curr_player == b->curr_player;
+#endif
 }
 
 uint64_t
@@ -66,13 +76,20 @@ othello_game_hash( othello_game_t const * game )
      in initialization. Technically a lil UB */
 
   return fd_hash( 0x1a2b3c4d5e6f8aUL, (void*)game, sizeof(*game) );
+  //return hash_u64( game->white ) ^ hash_u64( game->black );
 }
 
 size_t
 othello_game_popcount( othello_game_t const * game )
 {
+#if 0
+  return game->popcount;
+#else
+  /* somehow this is faster than saving popcount separately. Seems like
+     something is not right if that is true */
   return (size_t)__builtin_popcountll( game->white )
     + (size_t)__builtin_popcountll( game->black );
+#endif
 }
 
 void
@@ -118,10 +135,7 @@ othello_game_start_move( othello_game_t const * game,
   uint64_t own_moves = _all_valid_moves( game, curr_player );
   uint64_t opp_moves = _all_valid_moves( game, !curr_player );
 
-  uint64_t n_own_moves = (uint64_t)__builtin_popcountll( own_moves );
-  uint64_t n_opp_moves = (uint64_t)__builtin_popcountll( opp_moves );
-
-  if( n_own_moves==0 && n_opp_moves==0 ) {
+  if( own_moves==0 && opp_moves==0 ) {
     /* game is over */
     uint64_t white_stones = (uint64_t)__builtin_popcountll( game->white );
     uint64_t black_stones = (uint64_t)__builtin_popcountll( game->black );
@@ -135,9 +149,9 @@ othello_game_start_move( othello_game_t const * game,
   else {
     /* game continues */
     ctx->own_moves   = own_moves;
-    ctx->n_own_moves = n_own_moves;
+    ctx->n_own_moves = (uint64_t)__builtin_popcountll( own_moves );
     ctx->opp_moves   = opp_moves;
-    ctx->n_opp_moves = n_opp_moves;
+    ctx->n_opp_moves = (uint64_t)__builtin_popcountll( opp_moves );
     return true;
   }
 }
@@ -189,6 +203,9 @@ othello_game_make_move( othello_game_t *           game,
   if( (move & own_moves) == 0 ) {
     return false;
   }
+
+  /* /\* making a valid move always adds a piece to the game board *\/ */
+  /* game->popcount += 1; */
 
   uint64_t own = *own_p;
   uint64_t opp = *opp_p;

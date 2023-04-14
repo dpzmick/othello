@@ -311,6 +311,10 @@ int main( void )
           printf( "On trial %zu/%zu (%0.3f %%). Running %0.3f trials/sec (%0.3f turns/sec). Est %0.3f min remain\n",
                   trials_run, total_trials, (double)trials_run/(double)total_trials * 100.0,
                   trials_per_sec, turns_per_sec, sec_remain/60.0 );
+
+          // FIXME report sum over each thread
+          /* mcts_print_stats( black_player_state, sec ); */
+          /* mcts_print_stats( white_player_state, sec ); */
         }
       }
 

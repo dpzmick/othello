@@ -21,6 +21,10 @@ mcts_state_init( mcts_state_t * state,
                  uint64_t       seed,
                  size_t         n_boards );
 
+void
+mcts_print_stats( mcts_state_t const * mcts,
+                  double               sec );
+
 uint64_t
 mcts_select_move( mcts_state_t *             mcts,
                   othello_game_t const *     game,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -29,10 +30,14 @@ enum {
    independent of move making. */
 
 typedef struct othello_game {
-  uint8_t  curr_player;
   uint64_t white;
   uint64_t black;
+  uint8_t  curr_player;
+  uint8_t  _pad[15];             // for alignment
+  //uint64_t popcount;            // calling __builtin_popcount all the time is too slow
 } othello_game_t;
+
+static_assert( sizeof(othello_game_t)==32, "game board is not a nice size" );
 
 typedef struct othello_move_ctx {
   uint64_t own_moves;
