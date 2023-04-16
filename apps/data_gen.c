@@ -32,6 +32,7 @@
 #include "../misc/wthor.h"
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <libgen.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -151,9 +152,14 @@ run_all_games_in_file( wthor_file_t const * file,
       bool valid = othello_game_make_move( game, ctx, othello_bit_mask( x, y ) );
       if( !valid ) {
         othello_board_print( game );
-        Fail( "tried to make invalid move" );
+        Fail( "player %d tried to make invalid move at (%d, %d)", game->curr_player, x, y );
       }
+
+      /* othello_board_print( game ); */
+      /* fflush( stdout ); */
     }
+
+    /* Fail("bailing"); */
   }
 }
 

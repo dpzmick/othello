@@ -118,7 +118,7 @@ othello_board_print( othello_game_t const * game )
         printf( "B " );
       }
       else {
-        printf( "  " );
+        printf( ". " );
       }
     }
     printf("\n");
@@ -162,25 +162,9 @@ othello_game_all_valid_moves( othello_game_t const * game )
   return _all_valid_moves( game, game->curr_player );
 }
 
-// lmao so bad
-static inline void
-_extract_move( uint64_t   all_moves,
-               uint64_t   idx,
-               uint64_t * out_x,
-               uint64_t * out_y )
-{
-  for( uint64_t x = 0; x < 8; ++x ) {
-    for( uint64_t y = 0; y < 8; ++y ) {
-      if( 0==(all_moves&othello_bit_mask(x,y)) ) continue;
-      if( idx--==0 ) {
-        *out_x = x;
-        *out_y = y;
-        return;
-      }
-    }
-  }
-}
-
+#if 0
+#include "make_move_serial.h"
+#else
 bool
 othello_game_make_move( othello_game_t *           game,
                         othello_move_ctx_t const * ctx,
@@ -204,74 +188,115 @@ othello_game_make_move( othello_game_t *           game,
     return false;
   }
 
-  /* /\* making a valid move always adds a piece to the game board *\/ */
-  /* game->popcount += 1; */
-
   uint64_t own = *own_p;
   uint64_t opp = *opp_p;
   uint64_t empty = (~own & ~opp);
 
-  // FIXME this seems like it could be make significantly more efficient
-  //
-  // it may be possible to precompute flips in each direction then apply
-  // precomputed masks for a given board state?
+  /* We know this is a valid move.
 
-  uint64_t mx = 0, my = 0;
-  _extract_move( move, 0, &mx, &my );
+     Opposing players pieces are flipped _if_ this move outflanks a run in any
+     direction.
 
-  // n,s,e,w,ne,nw,se,sw
-  int64_t x_adjs[8] = {0,0,1,-1,1,-1,1,-1};
-  int64_t y_adjs[8] = {1,-1,0,0,1,1,-1,-1};
-  for( size_t d = 0; d < 8; ++d ) {
-    int64_t dx = x_adjs[d];
-    int64_t dy = y_adjs[d];
+     We just need to check is if we outflank (hit an empty square before hitting
+     out own) in each direction. As we're checking, we can track what pieces
+     would have gotten flipped (perhaps we can compute those flips as part of
+     the move calculation?) */
 
-    int64_t signed_x = (int64_t)mx+dx;
-    int64_t signed_y = (int64_t)my+dy;
+  uint64_t flips = 0;
 
-    // scan in this direction until we hit:
-    // 1. empty
-    // 2. our own piece
-    //
-    // Flip pieces we find along the way.
+  int64_t left_shifts[] = {
+    INT64_C(1), /* left */
+    INT64_C(8), /* up */
+    INT64_C(9), /* up-left */
+    INT64_C(7), /* up-right */
+  };
 
-    uint64_t flips = 0;
-    bool hit_own = false;
-    while( 1 ) {
-      if( signed_x < 0 || signed_x >= 8 ) break;
-      if( signed_y < 0 || signed_y >= 8 ) break;
+  uint64_t left_masks[] = {
+    UINT64_C(0xfefefefefefefefe), /* left */
+    UINT64_C(0xffffffffffffffff), /* up */
+    UINT64_C(0xfefefefefefefefe), /* up-left */
+    UINT64_C(0x7f7f7f7f7f7f7f7f), /* up-right */
+  };
 
-      uint64_t x = (uint64_t)signed_x;
-      uint64_t y = (uint64_t)signed_y;
+  for( size_t dir = 0; dir < ARRAY_SIZE( left_shifts ); ++dir ) {
+    int64_t  shift_amount = left_shifts[dir];
+    uint64_t shift_mask   = left_masks[dir];
 
-      if( own & othello_bit_mask( x, y ) ) {
-        hit_own = true;
+    uint64_t dir_flips = 0;
+
+    /* start at the move location shifted in direction */
+    uint64_t cursor = (move << shift_amount) & shift_mask;
+
+    while( true ) {
+      /* if cursor is expired (went off edge), exit */
+      if( cursor==0 ) break;
+
+      /* if we hit an empty piece, exit. not outflanking here */
+      if( (cursor&empty) != 0 ) break;
+
+      /* if we hit our own piece, we've finished the line. Add to flips! */
+      if( (cursor&own) != 0 ) {
+        flips |= dir_flips;
         break;
       }
 
-      if( empty & othello_bit_mask( x, y ) ) {
-        break;
-      }
-
-      flips |= othello_bit_mask( x, y );
-
-      signed_x += dx;
-      signed_y += dy;
-    }
-
-    // do the flips
-    if( hit_own ) {
-      opp &= ~flips;
-      own |= flips;
+      dir_flips |= cursor;
+      cursor = (cursor << shift_amount) & shift_mask;
     }
   }
 
+  uint64_t right_shifts[] = {
+    UINT64_C(1), /* right */
+    UINT64_C(8), /* down */
+    UINT64_C(9), /* down-right */
+    UINT64_C(7), /* down-left */
+  };
+
+  uint64_t right_masks[] = {
+    UINT64_C(0x7f7f7f7f7f7f7f7f), /* right */
+    UINT64_C(0xffffffffffffffff), /* down */
+    UINT64_C(0x7f7f7f7f7f7f7f7f), /* down-right */
+    UINT64_C(0xfefefefefefefefe), /* down-left */
+  };
+
+  for( size_t dir = 0; dir < ARRAY_SIZE( left_shifts ); ++dir ) {
+    uint64_t shift_amount = right_shifts[dir];
+    uint64_t shift_mask   = right_masks[dir];
+
+    uint64_t dir_flips = 0;
+
+    /* start at the move location shifted in direction */
+    uint64_t cursor = (move >> shift_amount) & shift_mask;
+
+    while( true ) {
+      /* if cursor is expired (went off edge), exit */
+      if( cursor==0 ) break;
+
+      /* if we hit an empty piece, exit. not outflanking here */
+      if( (cursor&empty) != 0 ) break;
+
+      /* if we hit our own piece, we've finished the line. Add to flips! */
+      if( (cursor&own) != 0 ) {
+        flips |= dir_flips;
+        break;
+      }
+
+      dir_flips |= cursor;
+      cursor = (cursor >> shift_amount) & shift_mask;
+    }
+  }
+
+  /* apply flips */
+  own = own | flips | move;
+  opp = opp & ~flips;
+
+  *own_p = own;
   *opp_p = opp;
-  *own_p = own | move;
 
   game->curr_player = !game->curr_player;
   return true;
 }
+#endif
 
 uint8_t
 othello_game_random_playout( othello_game_t * game,

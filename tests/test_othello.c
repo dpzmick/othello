@@ -697,6 +697,42 @@ TEST( basic_flips )
     othello_game_init_from_str( game,
                                 OTHELLO_BIT_WHITE, // white to make next move
                                 "........"
+                                "........"
+                                "........"
+                                "........"
+                                "........"
+                                "........"
+                                "...B...."
+                                "...W...." );
+
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 3, 5 ) );
+    CHECK( valid );
+
+    othello_game_t expect[1];
+    othello_game_init_from_str( expect,
+                                OTHELLO_BIT_BLACK,
+                                "........"
+                                "........"
+                                "........"
+                                "........"
+                                "........"
+                                "...W...."
+                                "...W...."
+                                "...W...." );
+
+    CHECK( othello_game_eq( game, expect ) );
+  }
+
+  {
+    othello_game_t game[1];
+    othello_game_init_from_str( game,
+                                OTHELLO_BIT_WHITE, // white to make next move
+                                "........"
                                 ".WBB...."
                                 "........"
                                 "........"
@@ -782,6 +818,222 @@ TEST( basic_flips )
                                 "...B...."
                                 "....B..."
                                 ".....B.." );
+
+    CHECK( othello_game_eq( game, expect ) );
+  }
+
+  {
+    othello_game_t game[1];
+    othello_game_init_from_str( game,
+                                OTHELLO_BIT_BLACK,
+                                "..W..WB."
+                                "...WWW.W"
+                                "B.BBWWBW"
+                                "WBBWWWWW"
+                                ".WBBWWWW"
+                                "..WWWWWW"
+                                "..WWWW.W"
+                                "..WWWW.." );
+
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 0, 4 ) );
+    CHECK( valid );
+
+    othello_game_t expect[1];
+    othello_game_init_from_str( expect,
+                                OTHELLO_BIT_WHITE,
+                                "..W..WB."
+                                "...WWW.W"
+                                "B.BBWWBW"
+                                "BBBWWWWW"
+                                "BBBBWWWW"
+                                "..WWWWWW"
+                                "..WWWW.W"
+                                "..WWWW.." );
+
+    CHECK( othello_game_eq( game, expect ) );
+  }
+
+  {
+    othello_game_t game[1];
+    othello_game_init_from_str( game,
+                                OTHELLO_BIT_WHITE,
+                                "..W.WB.."
+                                "...WWW.W"
+                                "B.BBWWBW"
+                                "BBBWWWWW"
+                                "BBBBWWWW"
+                                "..WWWWWW"
+                                "..WWWW.W"
+                                "..WWWW.." );
+
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 1, 5 ) );
+    CHECK( valid );
+
+    othello_game_t expect[1];
+    othello_game_init_from_str( expect,
+                                OTHELLO_BIT_BLACK,
+                                "..W.WB.."
+                                "...WWW.W"
+                                "B.BBWWBW"
+                                "BBBWWWWW"
+                                "BBWBWWWW"
+                                ".WWWWWWW"
+                                "..WWWW.W"
+                                "..WWWW.." );
+
+    CHECK( othello_game_eq( game, expect ) );
+  }
+
+  {
+    othello_game_t game[1];
+    othello_game_init_from_str( game,
+                                OTHELLO_BIT_WHITE,
+                                "..W.WB.."
+                                "...WWW.W"
+                                "B.BBWWBW"
+                                "BBBBWWBW"
+                                "BBWBBWBW"
+                                ".WWWWBBW"
+                                "..WWWWBW"
+                                "..WWWW.." );
+
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 1, 2 ) );
+    CHECK( valid );
+
+    othello_game_t expect[1];
+    othello_game_init_from_str( expect,
+                                OTHELLO_BIT_BLACK,
+                                "..W.WB.."
+                                "...WWW.W"
+                                "BWWWWWBW"
+                                "BWWBWWBW"
+                                "BWWWBWBW"
+                                ".WWWWBBW"
+                                "..WWWWBW"
+                                "..WWWW.." );
+
+    CHECK( othello_game_eq( game, expect ) );
+  }
+
+  {
+    othello_game_t game[1];
+    othello_game_init_from_str( game,
+                                OTHELLO_BIT_BLACK,
+                                ".BBBBB.."
+                                "BWWWWWWW"
+                                "BWWWWWWW"
+                                "BWBWWWWW"
+                                "BBWBWWWW"
+                                "BWWWBWWW"
+                                "..WWWBWW"
+                                "..WWWWBW" );
+
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 6, 0 ) );
+    CHECK( valid );
+
+    othello_game_t expect[1];
+    othello_game_init_from_str( expect,
+                                OTHELLO_BIT_WHITE,
+                                ".BBBBBB."
+                                "BWWWWWBW"
+                                "BWWWWWBW"
+                                "BWBWWWBW"
+                                "BBWBWWBW"
+                                "BWWWBWBW"
+                                "..WWWBBW"
+                                "..WWWWBW" );
+
+    CHECK( othello_game_eq( game, expect ) );
+  }
+
+  {
+    othello_game_t game[1];
+    othello_game_init_from_str( game,
+                                OTHELLO_BIT_WHITE,
+                                ".BBBBBB."
+                                "BWWWWWBW"
+                                "BWWWWWBW"
+                                "BWBWWWBW"
+                                "BBWBWWBW"
+                                "BWWWBWBW"
+                                "..WWWBBW"
+                                "..WWWWBW" );
+
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 7, 0 ) );
+    CHECK( valid );
+
+    othello_game_t expect[1];
+    othello_game_init_from_str( expect,
+                                OTHELLO_BIT_BLACK,
+                                ".BBBBBBW"
+                                "BWWWWWWW"
+                                "BWWWWWBW"
+                                "BWBWWWBW"
+                                "BBWBWWBW"
+                                "BWWWBWBW"
+                                "..WWWBBW"
+                                "..WWWWBW" );
+
+    CHECK( othello_game_eq( game, expect ) );
+  }
+
+  {
+    othello_game_t game[1];
+    othello_game_init_from_str( game,
+                                OTHELLO_BIT_BLACK,
+                                ".BBBBB.."
+                                "W.BWBB.."
+                                "WWWBWBBB"
+                                "WWBBWWWW"
+                                "WBBBBBW."
+                                "WBBBBB.W"
+                                "..BBBB.."
+                                "..BBBB.." );
+
+    uint8_t winner;
+    othello_move_ctx_t ctx[1];
+    bool valid = othello_game_start_move( game, ctx, &winner );
+    REQUIRE( valid );
+
+    valid = othello_game_make_move( game, ctx, othello_bit_mask( 7, 4 ) );
+    CHECK( valid );
+
+    othello_game_t expect[1];
+    othello_game_init_from_str( expect,
+                                OTHELLO_BIT_WHITE,
+                                ".BBBBB.."
+                                "W.BWBB.."
+                                "WWWBWBBB"
+                                "WWBBWWBB"
+                                "WBBBBBBB"
+                                "WBBBBB.W"
+                                "..BBBB.."
+                                "..BBBB.." );
 
     CHECK( othello_game_eq( game, expect ) );
   }
