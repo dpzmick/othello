@@ -364,8 +364,9 @@ run_trial( mcts_state_t *         mcts,
 
   /* We have unexplored node and the path we took to get to it */
 
-  othello_game_t _tmp   = *unexplored_node->game;
-  uint8_t        winner = othello_game_random_playout( &_tmp, seed );
+  uint64_t       _foo;
+  othello_game_t _tmp = *unexplored_node->game;
+  uint8_t        winner = othello_game_random_playout( &_tmp, seed, &_foo );
 
   /* Update everything in the path. All should be in table because we just
      looked them up. */

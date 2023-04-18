@@ -105,6 +105,7 @@ othello_game_make_move( othello_game_t *           game,
 
 uint8_t
 othello_game_random_playout( othello_game_t * game,
-                             uint64_t         seed );
+                             uint64_t         seed,
+                             uint64_t *       out_n_turns );
 
 // FIXME extract random player into libcomputer

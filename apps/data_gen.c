@@ -45,6 +45,8 @@
 
 #define N_TRIALS 5000
 
+#define MODE RANDOM
+
 static char const * const ALL_FILES[] = {
   "wthor_files/WTH_1977.wtb", "wthor_files/WTH_1978.wtb", "wthor_files/WTH_1979.wtb",
   "wthor_files/WTH_1980.wtb", "wthor_files/WTH_1981.wtb", "wthor_files/WTH_1982.wtb",
@@ -154,12 +156,7 @@ run_all_games_in_file( wthor_file_t const * file,
         othello_board_print( game );
         Fail( "player %d tried to make invalid move at (%d, %d)", game->curr_player, x, y );
       }
-
-      /* othello_board_print( game ); */
-      /* fflush( stdout ); */
     }
-
-    /* Fail("bailing"); */
   }
 }
 
@@ -271,13 +268,16 @@ int main( void )
       double wins = 0;
 
       for( size_t trial = 0; trial < N_TRIALS; ++trial ) {
-#if 0
+#if MODE==RANDOM
         othello_game_t game[1] = { *slot_game };
 
-        uint8_t winner = othello_game_random_playout( game, hash_u64( trial ) );
+        uint64_t _turns;
+        uint8_t winner = othello_game_random_playout( game, hash_u64( trial ), &_turns );
         if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
         if( winner==OTHELLO_GAME_TIED ) wins += 0.5;
-#else
+
+        turns_played += _turns;
+#elif MODE==MCTS
         mcts_state_init( black_player_state, 500, OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), 8192 );
         mcts_state_init( white_player_state, 500, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 );
         othello_game_t game[1] = { *slot_game };
@@ -302,12 +302,14 @@ int main( void )
 
         if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
         if( winner==OTHELLO_GAME_TIED ) wins += 0.5;
+#else
+#error "must define MODE"
 #endif
 
         trials_run += 1;
 
 #pragma omp critical
-        if( trials_run%1000 == 0 ) {
+        if( trials_run%1000000 == 0 ) {
           uint64_t now            = wallclock();
           double   sec            = (double)(now-st)/1e9;
           double   trials_per_sec = (double)trials_run/sec;

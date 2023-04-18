@@ -1153,7 +1153,8 @@ TEST( basic_random_play )
   othello_game_t game[1];
   othello_game_init( game );
 
-  uint8_t result = othello_game_random_playout( game, 0xcafebabedeadbeefUL );
+  uint64_t _turns;
+  uint8_t result = othello_game_random_playout( game, 0xcafebabedeadbeefUL, &_turns );
   CHECK(
     result==OTHELLO_BIT_WHITE
     || result==OTHELLO_BIT_BLACK
