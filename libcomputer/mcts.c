@@ -60,7 +60,7 @@ game_tree_init( game_tree_t * tree,
 /* node is valid until the next call to get */
 
 static game_tree_node_t *
-__attribute__((noinline))
+//__attribute__((noinline))
 game_tree_get( game_tree_t *          tree,
                othello_game_t const * game,
                uint64_t               min_stones,
@@ -261,16 +261,12 @@ mcts_state_init( mcts_state_t * ret,
 }
 
 void
-mcts_print_stats( mcts_state_t const * mcts,
-                  double               sec )
+mcts_get_stats( mcts_state_t const * mcts,
+                uint64_t *           out_loops,
+                uint64_t *           out_gets )
 {
-  (void)sec;
-  double gets  = (double)mcts->tree->n_gets;
-  double loops = (double)mcts->tree->n_loops;
-
-  printf( "%zu loops, %zu gets, %zu null rets, %0.3f loops/get\n",
-          mcts->tree->n_loops, mcts->tree->n_gets, mcts->tree->n_null_rets,
-          loops/gets );
+  *out_gets  = mcts->tree->n_gets;;
+  *out_loops = mcts->tree->n_loops;
 }
 
 static othello_game_t
@@ -404,11 +400,6 @@ mcts_select_move( mcts_state_t *             mcts,
   for( size_t trial = 0; trial < MAX( trials, n_moves+1 ); ++trial ) {
     run_trial( mcts, game, hash_u64( trial + now ) );
   }
-
-  /* if( othello_game_popcount( game ) > 20 ) { */
-  /*   dump_tree( tree, min_stones, game ); */
-  /*   Fail( "bailing" ); */
-  /* } */
 
   uint64_t best_move     = OTHELLO_MOVE_PASS;
   float    best_criteria = -1;

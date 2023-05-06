@@ -22,8 +22,9 @@ mcts_state_init( mcts_state_t * state,
                  size_t         n_boards );
 
 void
-mcts_print_stats( mcts_state_t const * mcts,
-                  double               sec );
+mcts_get_stats( mcts_state_t const * mcts,
+                uint64_t *           out_loops,
+                uint64_t *           out_gets );
 
 uint64_t
 mcts_select_move( mcts_state_t *             mcts,

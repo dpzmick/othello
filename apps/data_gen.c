@@ -1,29 +1,3 @@
-/* We are going to try using a neural net to evaluate each possible board
-   position that could be played.
-
-   To generate this data, we'll generate a large number of possible boards from
-   expert games and perform a large number of random playouts from those boards.
-   The random playouts aren't perfectly ideal, but this shouldn't be worse than
-   the MCTS that I was doing before.
-
-   Randomized playouts are rather expensive so we're using reasonably fast code
-   to generate these, however this bitboard othello representiation was
-   originally written for MCTS running on the device (which does not have vector
-   unit) so it has only been tuned to the extent needed to get fast-enough for a
-   first stab on the device. There's lots of potential being left on the floor
-   in the game code.
-
-   Keep in mind, the performance of the device we are targetting is extremely
-   limited; we're not going to be able to run anything super sophisticated on
-   the actual device. This sort of limits how sophisticated of training and
-   input data we need (I think?). The net can't be very large, so there's not
-   huge value in generating a giant corpus of example games (need a pretty big
-   one), and it's not going to be able to predict very well, so we don't really
-   need to fit it to super great data (I think?).
-
-   FIXME consider/evaluate something similar to alpha-go self play here? Not
-   sure that's valuable with a tiny net. */
-
 #include "../datastruct/game_set.h"
 #include "../libcommon/common.h"
 #include "../libcommon/hash.h"
@@ -42,10 +16,6 @@
 #include <sys/errno.h>
 #include <sys/mman.h>
 #include <unistd.h>
-
-#define N_TRIALS 5000
-
-#define MODE RANDOM
 
 static char const * const ALL_FILES[] = {
   "wthor_files/WTH_1977.wtb", "wthor_files/WTH_1978.wtb", "wthor_files/WTH_1979.wtb",
@@ -174,6 +144,8 @@ add_game_to_set( void *                 _ctx,
 
   ctx->n_input_boards += 1;
 
+  /* if( ctx->n_input_boards > 2000 ) return; */
+
   /* Computer plays as white, don't save this board */
   if( game->curr_player != OTHELLO_BIT_WHITE ) return;
 
@@ -235,12 +207,8 @@ int main( void )
   printf( "Found %zu unique boards for WHITE player (of %zu total) in %0.3f seconds. Ran ~%0.3f lookups per second\n",
           n_unique_boards, n_boards, sec, lookup_per_sec );
 
-  /* For each game in the game set, run a bunch of random trials and generate
-     some training data */
-
-  size_t turns_played = 0;
-  size_t trials_run   = 0;
-  size_t total_trials = n_unique_boards*N_TRIALS;
+  uint64_t games_played = 0;
+  uint64_t turns_played = 0;
 
   FILE * board_file = fopen( "training.boards", "w" );
   if( !board_file ) Fail( "Failed to open boards file" );
@@ -254,76 +222,60 @@ int main( void )
   st = wallclock();
   #pragma omp parallel private(white_player_state, black_player_state)
   {
-    black_player_state = malloc( mcts_state_size( 8192 ) );
+    size_t N = 1<<21;
+
+    black_player_state = malloc( mcts_state_size( N ) );
     if( !black_player_state ) Fail( "failed to allocate" );
 
-    white_player_state = malloc( mcts_state_size( 8192 ) );
+    white_player_state = malloc( mcts_state_size( N ) );
     if( !black_player_state ) Fail( "failed to allocate" );
 
     #pragma omp for
     for( size_t i = 0; i < game_set->n_slots; ++i ) {
-      othello_game_t const * slot_game = &game_set->slots[i];
-      if( slot_game->curr_player == OTHELLO_GAME_SET_SENTINEL ) continue;
+      othello_game_t game[] = { game_set->slots[i] };
+      if( game->curr_player == OTHELLO_GAME_SET_SENTINEL ) continue;
 
-      double wins = 0;
+      mcts_state_init( black_player_state, 5000, OTHELLO_BIT_BLACK, hash_u64( st ), N );
+      mcts_state_init( white_player_state, 5000, OTHELLO_BIT_WHITE, hash_u64( st ), N );
 
-      for( size_t trial = 0; trial < N_TRIALS; ++trial ) {
-#if MODE==RANDOM
-        othello_game_t game[1] = { *slot_game };
+      uint8_t winner;
+      while( 1 ) {
+        othello_move_ctx_t ctx[1];
+        uint64_t           move;
+        bool               valid;
 
-        uint64_t _turns;
-        uint8_t winner = othello_game_random_playout( game, hash_u64( trial ), &_turns );
-        if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
-        if( winner==OTHELLO_GAME_TIED ) wins += 0.5;
+        if( !othello_game_start_move( game, ctx, &winner ) ) break;
 
-        turns_played += _turns;
-#elif MODE==MCTS
-        mcts_state_init( black_player_state, 500, OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), 8192 );
-        mcts_state_init( white_player_state, 500, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 );
-        othello_game_t game[1] = { *slot_game };
+        mcts_state_t * which = game->curr_player==OTHELLO_BIT_WHITE ?
+          white_player_state : black_player_state;
 
-        uint8_t winner;
-        while( 1 ) {
-          othello_move_ctx_t ctx[1];
-          uint64_t           move;
-          bool               valid;
+        move = mcts_select_move( which, game, ctx );
+        valid = othello_game_make_move( game, ctx, move );
+        if( !valid ) Fail( "move invalid" );
 
-          if( !othello_game_start_move( game, ctx, &winner ) ) break;
+        turns_played += 1;
+      }
 
-          mcts_state_t * which = game->curr_player==OTHELLO_BIT_WHITE ?
-            white_player_state : black_player_state;
+      float score = 0;
+      if( winner==OTHELLO_BIT_WHITE ) score = 1.0;
+      if( winner==OTHELLO_BIT_BLACK ) score = -1.0;
+      if( winner==OTHELLO_GAME_TIED ) score = 0.5;
 
-          move = mcts_select_move( which, game, ctx );
-          valid = othello_game_make_move( game, ctx, move );
-          if( !valid ) Fail( "move invalid" );
+      games_played += 1;
 
-          turns_played += 1;
-        }
 
-        if( winner==OTHELLO_BIT_WHITE ) wins += 1.0;
-        if( winner==OTHELLO_GAME_TIED ) wins += 0.5;
-#else
-#error "must define MODE"
-#endif
-
-        trials_run += 1;
-
+      // should really be single
 #pragma omp critical
-        if( trials_run%1000000 == 0 ) {
-          uint64_t now            = wallclock();
-          double   sec            = (double)(now-st)/1e9;
-          double   trials_per_sec = (double)trials_run/sec;
-          double   turns_per_sec  = (double)turns_played/sec;
-          double   sec_remain     = (double)(total_trials-trials_run)/trials_per_sec;
+      if( games_played%100 == 0 ) {
+        uint64_t now           = wallclock();
+        double   sec           = (double)(now-st)/1e9;
+        double   games_per_sec = (double)games_played/sec;
+        double   turns_per_sec = (double)turns_played/sec;
+        double   sec_remain    = (double)(n_unique_boards-games_played)/games_per_sec;
 
-          printf( "On trial %zu/%zu (%0.3f %%). Running %0.3f trials/sec (%0.3f turns/sec). Est %0.3f min remain\n",
-                  trials_run, total_trials, (double)trials_run/(double)total_trials * 100.0,
-                  trials_per_sec, turns_per_sec, sec_remain/60.0 );
-
-          // FIXME report sum over each thread
-          /* mcts_print_stats( black_player_state, sec ); */
-          /* mcts_print_stats( white_player_state, sec ); */
-        }
+        printf( "On game %zu/%zu (%0.3f %%). Running %0.3f games/sec (%0.3f turns/sec). Est %0.3f min remain\n",
+                games_played, n_unique_boards, (double)games_played/(double)n_unique_boards * 100.0,
+                games_per_sec, turns_per_sec, sec_remain/60.0 );
       }
 
       /* input to NN is a 128 element flattened out floating point array */
@@ -333,14 +285,14 @@ int main( void )
 
       for( size_t y = 0; y < 8; ++y ) {
         for( size_t x = 0; x < 8; ++x ) {
-          bool occupied = slot_game->white & othello_bit_mask( x, y );
+          bool occupied = game->white & othello_bit_mask( x, y );
           board_out[idx++] = occupied ? 1.0f : 0.0f;
         }
       }
 
       for( size_t y = 0; y < 8; ++y ) {
         for( size_t x = 0; x < 8; ++x ) {
-          bool occupied = slot_game->black & othello_bit_mask( x, y );
+          bool occupied = game->black & othello_bit_mask( x, y );
           board_out[idx++] = occupied ? 1.0f : 0.0f;
         }
       }
@@ -353,14 +305,12 @@ int main( void )
           Fail( "Failed to write to output file" );
         }
 
-        float pred = (float)( (float)wins/(float)N_TRIALS );
-
-        if( 1!=fwrite( &pred, sizeof(pred), 1, pred_file ) ) {
+        if( 1!=fwrite( &score, sizeof(score), 1, pred_file ) ) {
           Fail( "Failed to write to output file" );
         }
       }
 
-      //if( trials_run > 2000000 ) break;
+      // if( games_played > 5000 ) break;
     }
 
     free( white_player_state );
