@@ -5,6 +5,31 @@ import torch
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+# hack around pytorch dataloader being slow for tensors in ram
+class SimpleDataLoader(object):
+    def __init__(self, dset, batch_size):
+        iterable = []
+        for i in range(0, int(len(dset)/batch_size)+1):
+            st = i * batch_size
+            ed = min((i+1) * batch_size, len(dset))
+
+            if ed <= st:
+                break
+
+            x = dset[st:ed]
+
+            if len(x[1]):
+                iterable.append(x)
+
+        self._inner = iterable
+
+    def __iter__(self):
+        return iter(self._inner)
+
+    def __len__(self):
+        return len(self._inner)
+
+
 class NN(nn.Module):
     def __init__(self):
         super().__init__()
@@ -35,17 +60,17 @@ def trainer(model, criterion, optimizer, dataloader, epochs=5):
             y_hat = model.forward(batch_X).flatten()
             loss = criterion(batch_y, y_hat) # calculate loss using the provided criterion function
 
-            if epoch % plot_epoch == 0 and idx==0:
-                a=y_hat.cpu().detach().numpy()
-                b=batch_y.cpu().detach().numpy()
+            # if epoch % plot_epoch == 0 and idx==0:
+            #     a=y_hat.cpu().detach().numpy()
+            #     b=batch_y.cpu().detach().numpy()
 
-                fig.add_trace(
-                    go.Histogram(x=a, nbinsx=100, marker=dict(color='red')),
-                    row=int(epoch/plot_epoch) + 1, col=1)
+            #     fig.add_trace(
+            #         go.Histogram(x=a, nbinsx=100, marker=dict(color='red')),
+            #         row=int(epoch/plot_epoch) + 1, col=1)
 
-                fig.add_trace(
-                    go.Histogram(x=b, nbinsx=100, marker=dict(color='blue')),
-                    row=int(epoch/plot_epoch) + 1, col=2)
+            #     fig.add_trace(
+            #         go.Histogram(x=b, nbinsx=100, marker=dict(color='blue')),
+            #         row=int(epoch/plot_epoch) + 1, col=2)
 
             loss.backward()
 
@@ -74,6 +99,9 @@ games = games.reshape( (len(pred), 128) )
 
 pred[pred==0.5] = 0.0
 
+# games = games[0:100,:]
+# pred = pred[0:100]
+
 print(f"Loaded {len(pred)} total boards")
 
 # if torch.cuda.is_available():
@@ -82,6 +110,7 @@ print(f"Loaded {len(pred)} total boards")
 # else:
 #     device = torch.device("cpu")
 
+# no point, just use cpu
 device = torch.device("cpu")
 
 games = torch.tensor(games)
@@ -98,10 +127,11 @@ print(f"There will be {train_size/batch_size} batches for {train_size} training 
 
 dataset = TensorDataset(games, pred)
 train, test = torch.utils.data.random_split(dataset, (train_size, test_size))
-dataloader = DataLoader(train, batch_size=batch_size)
+#dataloader = DataLoader(train, batch_size=batch_size)
+dataloader = SimpleDataLoader(train, batch_size)
 
 net = NN()
-net.load_state_dict(torch.load("out.torch", map_location=device))
+#net.load_state_dict(torch.load("out.torch", map_location=device))
 
 net = net.to(device)
 optim = torch.optim.Adam(net.parameters(), lr=0.01)
@@ -112,24 +142,24 @@ fig.write_html("out.html")
 
 torch.save(net.state_dict(), "out2.torch")
 
-# run over a bunch of test data
-fig = make_subplots(rows=1, cols=2, shared_xaxes=True)
-with torch.no_grad():
-    print(f"there are {len(test)} test samples")
-    dataloader = DataLoader(test, batch_size=len(test))
-    test_X, test_y = next(iter(dataloader))
+# # run over a bunch of test data
+# fig = make_subplots(rows=1, cols=2, shared_xaxes=True)
+# with torch.no_grad():
+#     print(f"there are {len(test)} test samples")
+#     dataloader = DataLoader(test, batch_size=len(test))
+#     test_X, test_y = next(iter(dataloader))
 
-    y_hat = net.forward(test_X).flatten()
+#     y_hat = net.forward(test_X).flatten()
 
-    a=y_hat.cpu().detach().numpy()
-    b=test_y.cpu().detach().numpy()
+#     a=y_hat.cpu().detach().numpy()
+#     b=test_y.cpu().detach().numpy()
 
-    fig.add_trace(
-        go.Histogram(x=a, nbinsx=100, marker=dict(color='red')),
-        row=1, col=1)
+#     fig.add_trace(
+#         go.Histogram(x=a, nbinsx=100, marker=dict(color='red')),
+#         row=1, col=1)
 
-    fig.add_trace(
-        go.Histogram(x=b, nbinsx=100, marker=dict(color='red')),
-        row=1, col=2)
+#     fig.add_trace(
+#         go.Histogram(x=b, nbinsx=100, marker=dict(color='red')),
+#         row=1, col=2)
 
-fig.write_html("res.html")
+# fig.write_html("res.html")
