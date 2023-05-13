@@ -63,7 +63,8 @@ pred_board_quality( uint64_t white,
                     uint64_t black )
 {
   float input[128];
-  float hidden[512];
+  float hidden1[512];
+  float hidden2[512];
   float out[1];
 
   size_t idx = 0;
@@ -81,9 +82,11 @@ pred_board_quality( uint64_t white,
     }
   }
 
-  linear_layer( input, 128, hidden, 512, l1_weights, l1_biases );
-  relu( hidden, 512 );
-  linear_layer( hidden, 512, out, 1, l2_weights, l2_biases );
+  linear_layer( input, 128, hidden1, 512, l1_weights, l1_biases );
+  relu( hidden1, 512 );
+  linear_layer( hidden1, 512, hidden2, 512, l2_weights, l2_biases );
+  relu( hidden1, 512 );
+  linear_layer( hidden2, 512, out, 1, l3_weights, l3_biases );
   sigmoid( out, 1 );
 
   return out[0];
