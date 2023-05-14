@@ -105,6 +105,60 @@ format_nn_game_input( float *                    ret,
 }
 
 static void
+flip_180( uint64_t   x,
+          uint64_t   y,
+          uint64_t * out_x,
+          uint64_t * out_y )
+{
+  // 0 -> 7
+  // 1 -> 6
+  // ..
+  // 7 -> 0
+
+  *out_x = 7 - x;
+  *out_y = 7 - y;
+}
+
+
+// flip 180 degress
+// FIXME find more flips?
+static othello_game_t
+flip_game( othello_game_t const * game )
+{
+  othello_game_t ret[1];
+  memset( ret, 0, sizeof(ret) );
+
+  ret->curr_player = game->curr_player;
+
+  for( uint64_t x = 0; x < 8; ++x ) {
+    for( uint64_t y = 0; y < 8; ++y ) {
+      uint64_t flipx, flipy;
+      flip_180( x, y, &flipx, &flipy );
+
+      if( game->white & othello_bit_mask( x, y ) ) {
+        // should be no piece here yet in new board
+        assert( (ret->white & othello_bit_mask( flipx, flipy )) ==0 );
+        assert( (ret->black & othello_bit_mask( flipx, flipy )) ==0 );
+
+        ret->white |= othello_bit_mask( flipx, flipy );
+      }
+
+      if( game->black & othello_bit_mask( x, y ) ) {
+        // should be no piece here yet in new board
+        assert( (ret->white & othello_bit_mask( flipx, flipy )) ==0 );
+        assert( (ret->black & othello_bit_mask( flipx, flipy )) ==0 );
+
+        ret->black |= othello_bit_mask( flipx, flipy );
+      }
+    }
+  }
+
+  return *ret;
+}
+
+/* static game_set_t * G_set = NULL; */
+
+static void
 save_game( uint64_t                   id,
            othello_game_t const *     game,
            othello_move_ctx_t const * ctx,
@@ -114,20 +168,74 @@ save_game( uint64_t                   id,
            FILE *                     input_file,
            FILE *                     policy_file)
 {
+  float input[193] = { 0 };
+  float policy[64] = { 0 };
+
+  /* if( !G_set ) { */
+  /*   size_t n = 15693850; */
+  /*   size_t sz = game_set_size( n ); */
+
+  /*   void * mem; */
+  /*   if( 0!=posix_memalign( &mem, 4096, sz ) ) Fail( "allocation" ); */
+
+  /*   memset( mem, 0, sz ); */
+
+  /*   G_set = game_set_new( mem, n ); */
+  /*   if( !G_set ) Fail( "game set" ); */
+  /* } */
+
+  /* If we've already seen a board, don't use it again. Just assume first expert
+     was the best! FIXME removed as probably not a good idea to do it this way */
+
+  /* if( game_set_get( G_set, game, false ) ) return; // already have it */
+  /* if( !game_set_get( G_set, game, true ) ) Fail( "out of space" ); */
+
+  // ----------------
+
+  format_nn_game_input( input, game, ctx );
+
   if( 1!=fwrite( &id, sizeof(id), 1, game_ids ) ) {
     Fail( "Failed to write to game ids file" );
   }
-
-  float input[193];
-  format_nn_game_input( input, game, ctx );
 
   if( 1!=fwrite( input, sizeof(input), 1, input_file ) ) {
     Fail( "Failed to write to output file" );
   }
 
-  float policy[64] = { 0 };
   if( move_x != 9 ) { // HACK
     policy[move_x + move_y*8] = 1.0;
+  }
+
+  if( 1!=fwrite( policy, sizeof(policy), 1, policy_file ) ) {
+    Fail( "Failed to write to output file" );
+  }
+
+  // ----------------
+
+  uint8_t            winner;
+  othello_move_ctx_t flipped_ctx[1];
+  othello_game_t     flipped_game[1] = { flip_game( game ) };
+
+  if( !othello_game_start_move( flipped_game, flipped_ctx, &winner ) ) {
+    othello_board_print( game );
+    othello_board_print( flipped_game );
+    Fail( "failed to start flip game move" );
+  }
+
+  format_nn_game_input( input, flipped_game, flipped_ctx );
+
+  if( 1!=fwrite( &id, sizeof(id), 1, game_ids ) ) {
+    Fail( "Failed to write to game ids file" );
+  }
+
+  if( 1!=fwrite( input, sizeof(input), 1, input_file ) ) {
+    Fail( "Failed to write to output file" );
+  }
+
+  if( move_x != 9 ) { // HACK
+    uint64_t flip_x, flip_y;
+    flip_180( move_x, move_y, &flip_x, &flip_y );
+    policy[flip_x + flip_y*8] = 1.0;
   }
 
   if( 1!=fwrite( policy, sizeof(policy), 1, policy_file ) ) {
@@ -213,13 +321,13 @@ run_all_games_in_file( wthor_file_t const * file,
 
 int main( void )
 {
-  FILE * ids_file = fopen( "ids.dat", "w" );
+  FILE * ids_file = fopen( "sym_ids.dat", "w" );
   if( !ids_file ) Fail( "Failed to open board ids file" );
 
-  FILE * input_file = fopen( "input.dat", "w" );
+  FILE * input_file = fopen( "sym_input.dat", "w" );
   if( !input_file ) Fail( "Failed to open input file" );
 
-  FILE * policy_file = fopen( "policy.dat", "w" );
+  FILE * policy_file = fopen( "sym_policy.dat", "w" );
   if( !policy_file ) Fail( "Failed to open policy file" );
 
   uint64_t id = 0;
