@@ -5,6 +5,7 @@ import torch
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pyzstd
+import time
 
 # hack around pytorch dataloader being slow for tensors in ram
 class SimpleDataLoader(object):
@@ -49,50 +50,35 @@ def trainer(model, criterion, optimizer, train, test, epochs=5):
     _losses = []
     _corrects = []
 
-    scaler = torch.cuda.amp.GradScaler()
-
-    # an epoch is a full pass over the input data set
-    # but each optim step will only consider BATCH_SIZE worth of data
     for epoch in range(epochs):
+        start_ts = time.time()
         losses = 0
         idx = 0
         for batch_X, batch_y in train:
-            # batch_X = batch_X.cuda()
-            # batch_y = batch_y.cuda()
-
             optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast():
-                y_hat = model.forward(batch_X)
+            valid = batch_X[:, 1:65]
 
-                #assert y_hat.shape == batch_y.shape
-                #y_indices = torch.argmax(batch_y, dim=1) # CrossEntropyLoss expects argmax to be efficient. Whoops
+            y_hat = model.forward(batch_X)
+            loss = criterion(y_hat, batch_y, valid)
 
-                loss = criterion(y_hat, batch_y)
+            loss.backward()
+            optimizer.step()
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-
-            #loss.backward()
-            #optimizer.step()
             losses += loss.item()
-
-            scaler.update()
 
         test_correct = 0
         test_total = 0
         with torch.no_grad():
             for batch_X, batch_y in test:
-                # batch_X = batch_X.cuda()
-                # batch_y = batch_y.cuda()
-
                 y_hat = model.forward(batch_X)
                 test_correct += torch.sum(batch_y == torch.argmax(y_hat, dim=1))
                 test_total += batch_y.shape[0]
 
         _losses.append(losses/len(dataloader))
         _corrects.append(test_correct.cpu().detach().numpy()/test_total)
-        print(f"epoch: {epoch+1}, loss: {losses / len(dataloader)}, test result {test_correct/test_total}")
+        stop_ts = time.time()
+        print(f"epoch: {epoch+1}, loss: {losses / len(dataloader)}, test result {test_correct/test_total}, took {stop_ts - start_ts}")
 
         fig = make_subplots(specs=[[{"secondary_y": True}]])
         x = list(range(len(_losses)))
@@ -119,6 +105,8 @@ print(f"Read {len(ids)} boards from the input files")
 np.random.seed(12345)
 unique_ids = np.unique(ids)
 np.random.shuffle(unique_ids)
+
+#unique_ids = unique_ids[0:5000]
 
 print(f"With {len(unique_ids)} unique games")
 
@@ -156,7 +144,7 @@ test_inputs = torch.from_numpy(test_inputs).to(device)
 test_policy = torch.from_numpy(test_policy).to(device)
 
 #batch_size = int(n_train/16)
-batch_size = 1024
+batch_size = 2048
 print(f"There will be {train_inputs.shape[0]/batch_size} batches")
 
 dataset = TensorDataset(train_inputs, train_policy)
@@ -167,12 +155,19 @@ dataloader_test = SimpleDataLoader(dataset_test, int(test_policy.shape[0]/8))
 
 net = NN()
 net.to(device)
-# net = torch.nn.DataParallel(net, device_ids=[0 for _ in range(2)]) # use giant batches then let torch split up on gpu
-# net.load_state_dict(torch.load("out2.torch", map_location=device))
+net.load_state_dict(torch.load("models/out_8192.torch", map_location=device))
 
 optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True)
-loss = nn.CrossEntropyLoss()
-trainer(net, loss, optim, dataloader, dataloader_test, epochs=8192)
-#trainer(net, loss, optim, dataloader, None, epochs=8192)
+#optim = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
 
-torch.save(net.state_dict(), "out.torch")
+# custom loss than penalizes playing in invalid places
+def loss(y_hat, batch_y, valid):
+    invalid = -1 * valid + 1.0
+    ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
+    wrong = torch.mean(invalid * y_hat)
+    return ce+wrong
+
+#loss = nn.CrossEntropyLoss()
+trainer(net, loss, optim, dataloader, dataloader_test, epochs=4)
+
+torch.save(net.state_dict(), "out_8192_train_with_valid_and_fixed_data.torch")

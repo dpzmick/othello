@@ -70,13 +70,21 @@ format_nn_game_input( float *                    ret,
                       othello_move_ctx_t const * ctx )
 {
   /* save to the input vector:
-     1. the current player
      2. the valid moves (64)
      3. the board */
 
   size_t idx = 0;
 
-  ret[idx++] = (float)game->curr_player;
+  uint64_t first  = game->white;
+  uint64_t second = game->black;
+
+  /* if the current player is black, invert the piece placemenets so net always
+     sees things as the white player */
+
+  if( game->curr_player == OTHELLO_BIT_BLACK ) {
+    first  = game->black;
+    second = game->white;
+  }
 
   // ret[1 + x + y*8] = can_play
   for( size_t y = 0; y < 8; ++y ) {
@@ -89,19 +97,19 @@ format_nn_game_input( float *                    ret,
   // each player in separate array
   for( size_t y = 0; y < 8; ++y ) {
     for( size_t x = 0; x < 8; ++x ) {
-      bool occupied = game->white & othello_bit_mask( x, y );
+      bool occupied = first & othello_bit_mask( x, y );
       ret[idx++] = occupied ? 1.0f : 0.0f;
     }
   }
 
   for( size_t y = 0; y < 8; ++y ) {
     for( size_t x = 0; x < 8; ++x ) {
-      bool occupied = game->black & othello_bit_mask( x, y );
+      bool occupied = second & othello_bit_mask( x, y );
       ret[idx++] = occupied ? 1.0f : 0.0f;
     }
   }
 
-  assert( idx == 1+64+128 );
+  assert( idx == 64+128 );
 }
 
 static void
@@ -168,31 +176,12 @@ save_game( uint64_t                   id,
            FILE *                     input_file,
            FILE *                     policy_file)
 {
-  float input[193] = { 0 };
+  float input[192] = { 0 };
   float policy[64] = { 0 };
 
-  /* if( !G_set ) { */
-  /*   size_t n = 15693850; */
-  /*   size_t sz = game_set_size( n ); */
-
-  /*   void * mem; */
-  /*   if( 0!=posix_memalign( &mem, 4096, sz ) ) Fail( "allocation" ); */
-
-  /*   memset( mem, 0, sz ); */
-
-  /*   G_set = game_set_new( mem, n ); */
-  /*   if( !G_set ) Fail( "game set" ); */
-  /* } */
-
-  /* If we've already seen a board, don't use it again. Just assume first expert
-     was the best! FIXME removed as probably not a good idea to do it this way */
-
-  /* if( game_set_get( G_set, game, false ) ) return; // already have it */
-  /* if( !game_set_get( G_set, game, true ) ) Fail( "out of space" ); */
-
-  // ----------------
-
   format_nn_game_input( input, game, ctx );
+
+  /* othello_board_print( game ); */
 
   if( 1!=fwrite( &id, sizeof(id), 1, game_ids ) ) {
     Fail( "Failed to write to game ids file" );
@@ -267,6 +256,8 @@ run_all_games_in_file( wthor_file_t const * file,
       othello_move_ctx_t ctx[1];
       if( !othello_game_start_move( game, ctx, &winner ) ) break;
 
+      /* othello_board_print( game ); */
+
       if( move_idx>=60 ) {
         /* Some of the games in the file seem to not have finished by the end of
            the fixed 60 move allotment. They do not have a winner as they are
@@ -278,6 +269,7 @@ run_all_games_in_file( wthor_file_t const * file,
 
       uint8_t x, y;
       decode_move( move_byte, &x, &y );
+      /* printf( "player %d making move %d, %d\n", game->curr_player, x, y ); */
 
       /* Some files have explicit pass byte */
 
@@ -323,13 +315,13 @@ run_all_games_in_file( wthor_file_t const * file,
 
 int main( void )
 {
-  FILE * ids_file = fopen( "sym_ids.dat", "w" );
+  FILE * ids_file = fopen( "sym_ids_playernorm.dat", "w" );
   if( !ids_file ) Fail( "Failed to open board ids file" );
 
-  FILE * input_file = fopen( "sym_input.dat", "w" );
+  FILE * input_file = fopen( "sym_input_playernorm.dat", "w" );
   if( !input_file ) Fail( "Failed to open input file" );
 
-  FILE * policy_file = fopen( "sym_policy.dat", "w" );
+  FILE * policy_file = fopen( "sym_policy_playernorm.dat", "w" );
   if( !policy_file ) Fail( "Failed to open policy file" );
 
   uint64_t id = 0;
