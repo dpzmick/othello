@@ -4,21 +4,21 @@
 #include <stdio.h>
 #include <string.h>
 
-typedef void (*test_func_t)();
+typedef void (*test_func_t)(bool * test_failed);
 
 extern char const * unit_test_names[1024];
 extern test_func_t  unit_tests[1024];
 extern size_t       test_cnt;
 
 #define TEST(name) \
-  static void TEST_##name();                    \
-                                                \
-  __attribute__((constructor))                  \
-  static void TEST_##name##_ctor() {            \
-    unit_test_names[test_cnt] = #name;          \
-    unit_tests[test_cnt++] = TEST_##name;       \
-  }                                             \
-                                                \
+  static void TEST_##name( bool * __test_failed );  \
+                                                    \
+  __attribute__((constructor))                      \
+  static void TEST_##name##_ctor() {                \
+    unit_test_names[test_cnt] = #name;              \
+    unit_tests[test_cnt++] = TEST_##name;           \
+  }                                                 \
+                                                                        \
   static void TEST_##name( __attribute__((unused)) bool * __test_failed )
 
 // from http://www.robertgamble.net/2012/01/c11-generic-selections.html

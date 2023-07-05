@@ -9,6 +9,8 @@
 
 //#include "valid_moves_serial.h"
 
+typedef uint64_t uint64x4_t __attribute__((vector_size(256)));
+
 #ifdef __ARM_NEON__
 #include "valid_moves_vectorized_arm.h"
 #else

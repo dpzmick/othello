@@ -1,8 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef uint64_t uint64x4_t __attribute__((vector_size(256)));
-
 static inline uint64x4_t
 _gen_left_shift_moves( uint64x4_t owns,
                        uint64x4_t opps,

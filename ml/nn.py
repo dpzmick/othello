@@ -35,9 +35,9 @@ class SimpleDataLoader(object):
 class NN(nn.Module):
     def __init__(self):
         super().__init__()
-        self.l1 = nn.Linear(1+64+128, 512)
-        self.l2 = nn.Linear(512, 512)
-        self.l3 = nn.Linear(512, 64)
+        self.l1 = nn.Linear(1+64+128, 1024)
+        self.l2 = nn.Linear(1024, 1024)
+        self.l3 = nn.Linear(1024, 64)
 
     def forward(self, X):
         X = torch.relu(self.l1(X))
@@ -88,15 +88,15 @@ def trainer(model, criterion, optimizer, train, test, epochs=5):
 
 train_perc = 0.8
 
-with open("../sym_ids.dat.zst", 'rb') as f:
+with open("../sym_ids_withdups.dat.zst", 'rb') as f:
     decompressed_data = pyzstd.decompress(f.read())
     ids = np.frombuffer(decompressed_data, dtype=np.uint64)
 
-with open("../sym_input.dat.zst", 'rb') as f:
+with open("../sym_input_withdups.dat.zst", 'rb') as f:
     decompressed_data = pyzstd.decompress(f.read())
     inputs = np.frombuffer(decompressed_data, dtype=np.float32).reshape( (len(ids), 1+64+128) )
 
-with open("../sym_policy.dat.zst", 'rb') as f:
+with open("../sym_policy_withdups.dat.zst", 'rb') as f:
     decompressed_data = pyzstd.decompress(f.read())
     policy = np.frombuffer(decompressed_data, dtype=np.float32).reshape( (len(ids), 64) )
 
@@ -106,7 +106,7 @@ np.random.seed(12345)
 unique_ids = np.unique(ids)
 np.random.shuffle(unique_ids)
 
-#unique_ids = unique_ids[0:5000]
+#unique_ids = unique_ids[0:500]
 
 print(f"With {len(unique_ids)} unique games")
 
@@ -128,14 +128,16 @@ test_policy = np.argmax(test_policy, axis=1)
 
 print(f"-> {train_inputs.shape[0]} boards to train and {test_inputs.shape[0]} boards to test")
 
-if torch.cuda.is_available():
-    print("using cuda")
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    print("using mps")
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
+# if torch.cuda.is_available():
+#     print("using cuda")
+#     device = torch.device("cuda")
+# elif torch.backends.mps.is_available():
+#     print("using mps")
+#     device = torch.device("mps")
+# else:
+#     device = torch.device("cpu")
+
+device = torch.device("cpu")
 
 train_inputs = torch.from_numpy(train_inputs).to(device)
 train_policy = torch.from_numpy(train_policy).to(device)
@@ -143,7 +145,18 @@ train_policy = torch.from_numpy(train_policy).to(device)
 test_inputs = torch.from_numpy(test_inputs).to(device)
 test_policy = torch.from_numpy(test_policy).to(device)
 
-#batch_size = int(n_train/16)
+# the board dataset size is about 11gigs
+# the policy sizes are about 120megs
+#
+# macbook has 16gigs of ram, but to use MPS data has to be pinned (probably)
+# but mps is broken anyway...
+
+print(f"Loaded data to torch.")
+print(f"  Train input  dtype={train_inputs.dtype}  shape={train_inputs.shape}")
+print(f"  Train policy dtype={train_policy.dtype}    shape={train_policy.shape}")
+print(f"  Test input   dtype={test_inputs.dtype}  shape={test_inputs.shape}")
+print(f"  Test policy  dtype={test_policy.dtype}    shape={test_policy.shape}")
+
 batch_size = 2048
 print(f"There will be {train_inputs.shape[0]/batch_size} batches")
 
@@ -155,19 +168,23 @@ dataloader_test = SimpleDataLoader(dataset_test, int(test_policy.shape[0]/8))
 
 net = NN()
 net.to(device)
-net.load_state_dict(torch.load("models/out_8192.torch", map_location=device))
+#net.load_state_dict(torch.load("out_8192_8192_128_256_train_with_valid_and_fixed_data_and_dedup.torch", map_location=device))
 
 optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True)
-#optim = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
 
 # custom loss than penalizes playing in invalid places
-def loss(y_hat, batch_y, valid):
-    invalid = -1 * valid + 1.0
+# maybe don't need this if we do the dedup
+
+# def loss(y_hat, batch_y, valid):
+#     invalid = -1 * valid + 1.0
+#     ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
+#     wrong = torch.mean(invalid * y_hat)
+#     return ce+wrong
+
+def loss(y_hat, batch_y, _valid):
     ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
-    wrong = torch.mean(invalid * y_hat)
-    return ce+wrong
+    return ce
 
-#loss = nn.CrossEntropyLoss()
-trainer(net, loss, optim, dataloader, dataloader_test, epochs=4)
+trainer(net, loss, optim, dataloader, dataloader_test, epochs=8192)
 
-torch.save(net.state_dict(), "out_8192_train_with_valid_and_fixed_data.torch")
+torch.save(net.state_dict(), "out.torch")

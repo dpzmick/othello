@@ -275,7 +275,7 @@ int main( void )
         double   turns_per_sec = (double)turns_played/sec;
         double   sec_remain    = (double)(n_unique_boards-games_played)/games_per_sec;
 
-        printf( "On game %zu/%zu (%0.3f %%). Running %0.3f games/sec (%0.3f turns/sec). Est %0.3f min remain\n",
+        printf( "On game %"PRIu64"/%zu (%0.3f %%). Running %0.3f games/sec (%0.3f turns/sec). Est %0.3f min remain\n",
                 games_played, n_unique_boards, (double)games_played/(double)n_unique_boards * 100.0,
                 games_per_sec, turns_per_sec, sec_remain/60.0 );
       }

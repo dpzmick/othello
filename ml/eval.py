@@ -25,6 +25,12 @@ class NN(nn.Module):
         X = torch.relu(self.l3(X))
         return X
 
+    def forward_inference(self, X):
+        X = torch.relu(self.l1(X))
+        X = torch.relu(self.l2(X))
+        X = torch.relu(self.l3(X))
+        return torch.sigmoid(X)
+
     def get_l1(self, X):
         X = torch.relu(self.l1(X))
         return X
@@ -34,22 +40,23 @@ class NN(nn.Module):
         X = torch.relu(self.l2(X))
         return X
 
-with open("../ids.dat.zst", 'rb') as f:
+with open("../sym_ids.dat.zst", 'rb') as f:
     decompressed_data = pyzstd.decompress(f.read())
     ids = np.frombuffer(decompressed_data, dtype=np.uint64)
 
-with open("../input.dat.zst", 'rb') as f:
+with open("../sym_input.dat.zst", 'rb') as f:
     decompressed_data = pyzstd.decompress(f.read())
     inputs = np.frombuffer(decompressed_data, dtype=np.float32).reshape( (len(ids), 1+64+128) )
 
-with open("../policy.dat.zst", 'rb') as f:
+with open("../sym_policy.dat.zst", 'rb') as f:
     decompressed_data = pyzstd.decompress(f.read())
     policy = np.frombuffer(decompressed_data, dtype=np.float32).reshape( (len(ids), 64) )
 
 n_boards = inputs.shape[0]
 
 net = NN()
-net.load_state_dict(torch.load("out_with_valid.torch"))
+net.load_state_dict(torch.load("out_8192_8192_128_256_8192_train_with_valid_and_fixed_data_and_dedup_then_with_dup_v2_final_for_real_this_time.torch"))
+
 
 app = Dash()
 
@@ -68,7 +75,7 @@ def display_board(i=0):
         t = torch.tensor(inpt)
         l1 = net.get_l1(t)
         l2 = net.get_l2(t)
-        est = net(t).numpy().reshape((8,8))
+        est = net.forward_inference(t).numpy().reshape((8,8))
 
     player = inpt[1]
     valid  = inpt[1:65].reshape((8,8)) # valid moves
@@ -102,12 +109,11 @@ def display_board(i=0):
 
     return html.Div(id='display', children=[
         table,
-        # html.H1("input"),
-        # dcc.Graph(figure=px.bar(inpt)),
-        html.H1("l1"),
-        dcc.Graph(figure=px.imshow(l1.reshape((32,16)))),
-        html.H1("l2"),
-        dcc.Graph(figure=px.imshow(l2.reshape((32,16)))),
+        html.Div(children=[
+            dcc.Graph(figure=px.imshow(l1.reshape((32,16))), style={"display": "inline-block", "width": "30%"}),
+            dcc.Graph(figure=px.imshow(l2.reshape((32,16))), style={"display": "inline-block", "width": "30%"}),
+            dcc.Graph(figure=px.imshow(est), style={"display": "inline-block", "width": "30%"}),
+        ]),
     ])
 
 app.layout = html.Div(children=[

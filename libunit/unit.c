@@ -21,7 +21,7 @@ unit_test_run_all( char const * filter )
 
     printf( "Running %s\n", test_name );
     bool test_failed = false;
-    unit_tests[i](&test_failed);
+    (unit_tests[i])(&test_failed);
     any_failed |= test_failed;
   }
 

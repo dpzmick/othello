@@ -1,6 +1,4 @@
-/* Train NN to estimate professioal moves */
-
-#include "../datastruct/game_set.h"
+//#include "../datastruct/u128set.h"
 #include "../libcommon/common.h"
 #include "../libcommon/hash.h"
 #include "../libcomputer/mcts.h"
@@ -119,9 +117,7 @@ flip_180( uint64_t   x,
   *out_y = 7 - y;
 }
 
-
 // flip 180 degress
-// FIXME find more flips?
 static othello_game_t
 flip_game( othello_game_t const * game )
 {
@@ -156,7 +152,34 @@ flip_game( othello_game_t const * game )
   return *ret;
 }
 
-/* static game_set_t * G_set = NULL; */
+static void
+save_game_inner( uint64_t                   id,
+                 othello_game_t const *     game,
+                 othello_move_ctx_t const * ctx,
+                 uint8_t                    move_x,
+                 uint8_t                    move_y,
+                 FILE *                     game_ids,
+                 FILE *                     input_file,
+                 FILE *                     policy_file )
+{
+  float input[193] = { 0 };
+  float policy[64] = { 0 };
+
+  format_nn_game_input( input, game, ctx );
+  policy[move_x + move_y*8] = 1.0;
+
+  if( 1!=fwrite( &id, sizeof(id), 1, game_ids ) ) {
+    Fail( "Failed to write to game ids file" );
+  }
+
+  if( 1!=fwrite( input, sizeof(input), 1, input_file ) ) {
+    Fail( "Failed to write to output file" );
+  }
+
+  if( 1!=fwrite( policy, sizeof(policy), 1, policy_file ) ) {
+    Fail( "Failed to write to output file" );
+  }
+}
 
 static void
 save_game( uint64_t                   id,
@@ -166,55 +189,18 @@ save_game( uint64_t                   id,
            uint8_t                    move_y,
            FILE *                     game_ids,
            FILE *                     input_file,
-           FILE *                     policy_file)
+           FILE *                     policy_file )
 {
-  float input[193] = { 0 };
-  float policy[64] = { 0 };
+  save_game_inner( id, game, ctx, move_x, move_y, game_ids, input_file, policy_file );
 
-  /* if( !G_set ) { */
-  /*   size_t n = 15693850; */
-  /*   size_t sz = game_set_size( n ); */
-
-  /*   void * mem; */
-  /*   if( 0!=posix_memalign( &mem, 4096, sz ) ) Fail( "allocation" ); */
-
-  /*   memset( mem, 0, sz ); */
-
-  /*   G_set = game_set_new( mem, n ); */
-  /*   if( !G_set ) Fail( "game set" ); */
-  /* } */
-
-  /* If we've already seen a board, don't use it again. Just assume first expert
-     was the best! FIXME removed as probably not a good idea to do it this way */
-
-  /* if( game_set_get( G_set, game, false ) ) return; // already have it */
-  /* if( !game_set_get( G_set, game, true ) ) Fail( "out of space" ); */
-
-  // ----------------
-
-  format_nn_game_input( input, game, ctx );
-
-  if( 1!=fwrite( &id, sizeof(id), 1, game_ids ) ) {
-    Fail( "Failed to write to game ids file" );
-  }
-
-  if( 1!=fwrite( input, sizeof(input), 1, input_file ) ) {
-    Fail( "Failed to write to output file" );
-  }
-
-  if( move_x != 9 ) { // HACK
-    policy[move_x + move_y*8] = 1.0;
-  }
-
-  if( 1!=fwrite( policy, sizeof(policy), 1, policy_file ) ) {
-    Fail( "Failed to write to output file" );
-  }
-
-  // ----------------
+  // flip the board 180 degress and save that too
 
   uint8_t            winner;
   othello_move_ctx_t flipped_ctx[1];
   othello_game_t     flipped_game[1] = { flip_game( game ) };
+
+  uint64_t flipped_x, flipped_y;
+  flip_180( move_x, move_y, &flipped_x, &flipped_y );
 
   if( !othello_game_start_move( flipped_game, flipped_ctx, &winner ) ) {
     othello_board_print( game );
@@ -222,26 +208,11 @@ save_game( uint64_t                   id,
     Fail( "failed to start flip game move" );
   }
 
-  format_nn_game_input( input, flipped_game, flipped_ctx );
+  save_game_inner( id, flipped_game, flipped_ctx, (uint8_t)flipped_x, (uint8_t)flipped_y, game_ids, input_file, policy_file );
 
-  if( 1!=fwrite( &id, sizeof(id), 1, game_ids ) ) {
-    Fail( "Failed to write to game ids file" );
-  }
-
-  if( 1!=fwrite( input, sizeof(input), 1, input_file ) ) {
-    Fail( "Failed to write to output file" );
-  }
-
-  memset( policy, 0, sizeof( policy ) );
-
-  if( move_x != 9 ) { // HACK
-    uint64_t flip_x, flip_y;
-    flip_180( move_x, move_y, &flip_x, &flip_y );
-    policy[flip_x + flip_y*8] = 1.0;
-  }
-
-  if( 1!=fwrite( policy, sizeof(policy), 1, policy_file ) ) {
-    Fail( "Failed to write to output file" );
+  // sanity check
+  if( !othello_game_make_move( flipped_game, flipped_ctx, othello_bit_mask( flipped_x, flipped_y ) ) ) {
+    Fail( "Invalid flipped moved saved to file" );
   }
 }
 
@@ -282,8 +253,7 @@ run_all_games_in_file( wthor_file_t const * file,
       /* Some files have explicit pass byte */
 
       if( move_byte == 0 ) {
-        save_game( starting_id, game, ctx, 9, 9, game_ids, input_file, policy_file );
-
+        /* Do not save PASS moves into the dataset */
         bool valid = othello_game_make_move( game, ctx, OTHELLO_MOVE_PASS );
         if( !valid ) Fail( "tried to make invalid move" );
         continue;
@@ -296,7 +266,7 @@ run_all_games_in_file( wthor_file_t const * file,
          so many times; maybe should restructure this? */
 
       if( ctx->n_own_moves == 0 ) {
-        save_game( starting_id, game, ctx, 9, 9, game_ids, input_file, policy_file );
+        /* Do not save PASS moves into the dataset */
 
         bool valid = othello_game_make_move( game, ctx, OTHELLO_MOVE_PASS );
         if( !valid ) Fail( "tried to make invalid move" );
@@ -323,17 +293,18 @@ run_all_games_in_file( wthor_file_t const * file,
 
 int main( void )
 {
-  FILE * ids_file = fopen( "sym_ids.dat", "w" );
+  FILE * ids_file = fopen( "sym_ids_withdups.dat", "w" );
   if( !ids_file ) Fail( "Failed to open board ids file" );
 
-  FILE * input_file = fopen( "sym_input.dat", "w" );
+  FILE * input_file = fopen( "sym_input_withdups.dat", "w" );
   if( !input_file ) Fail( "Failed to open input file" );
 
-  FILE * policy_file = fopen( "sym_policy.dat", "w" );
+  FILE * policy_file = fopen( "sym_policy_withdups.dat", "w" );
   if( !policy_file ) Fail( "Failed to open policy file" );
 
   uint64_t id = 0;
-  for( size_t file_idx = 0; file_idx < ARRAY_SIZE( ALL_FILES ); ++file_idx ) {
+  /* for( size_t file_idx = 0; file_idx < ARRAY_SIZE( ALL_FILES ); ++file_idx ) { */
+  for( ssize_t file_idx = ARRAY_SIZE( ALL_FILES )-1; file_idx >= 0; --file_idx ) {
     printf( "On file %zu of %zu\n", file_idx, ARRAY_SIZE( ALL_FILES ) );
     wthor_file_t const * file = mmap_file( ALL_FILES[file_idx] );
 

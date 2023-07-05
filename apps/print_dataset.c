@@ -19,13 +19,21 @@
 
 int main( void )
 {
-  FILE * ids_file = fopen( "ids.dat", "r" );
+  /* FILE * ids_file = fopen( "sym_ids_playernorm.dat", "r" ); */
+  /* if( !ids_file ) Fail( "Failed to open board ids file" ); */
+
+  /* FILE * input_file = fopen( "sym_input_playernorm.dat", "r" ); */
+  /* if( !input_file ) Fail( "Failed to open input file" ); */
+
+  /* FILE * policy_file = fopen( "sym_policy_playernorm.dat", "r" ); */
+  /* if( !policy_file ) Fail( "Failed to open policy file" ); */
+  FILE * ids_file = fopen( "sym_ids.dat", "r" );
   if( !ids_file ) Fail( "Failed to open board ids file" );
 
-  FILE * input_file = fopen( "input.dat", "r" );
+  FILE * input_file = fopen( "sym_input.dat", "r" );
   if( !input_file ) Fail( "Failed to open input file" );
 
-  FILE * policy_file = fopen( "policy.dat", "r" );
+  FILE * policy_file = fopen( "sym_policy.dat", "r" );
   if( !policy_file ) Fail( "Failed to open policy file" );
 
   while( 1 ) {
@@ -33,12 +41,13 @@ int main( void )
     if( 1!=fread( &id, sizeof(id), 1, ids_file ) ) break;
 
     float input[193];
+    /* float input[192]; */
     if( 1!=fread( &input, sizeof(input), 1, input_file ) ) Fail( "read input" );
 
     float policy[64];
     if( 1!=fread( &policy, sizeof(policy), 1, policy_file ) ) Fail( "read policy" );
 
-    printf( "player: %f\n", (double)input[0] );
+    /* printf( "player: %f\n", (double)input[0] ); */
 
     /* printf( "valid: "); */
     /* for( size_t i = 0; i < 64; ++i ) { */
@@ -74,6 +83,11 @@ int main( void )
         uint8_t bit_policy = policy[x + y*8] > 0.0f;
         uint8_t bit_white  = input[1 + 64 + x + y*8] > 0.0f;
         uint8_t bit_black  = input[1 + 64 + 64 + x + y*8] > 0.0f;
+
+        /* uint8_t bit_valid  = input[x + y*8] > 0.0f; */
+        /* uint8_t bit_policy = policy[x + y*8] > 0.0f; */
+        /* uint8_t bit_white  = input[64 + x + y*8] > 0.0f; */
+        /* uint8_t bit_black  = input[64 + 64 + x + y*8] > 0.0f; */
 
         if( bit_valid ) {
           assert( !bit_white && !bit_black );
