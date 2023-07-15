@@ -120,3 +120,43 @@ nn_select_move( othello_game_t const *     game,
 
   return best_move;
 }
+
+void
+nn_format_input( othello_game_t const *     game,
+                 othello_move_ctx_t const * ctx,
+                 float *                    ret )
+{
+  /* save to the input vector:
+     1. the current player
+     2. the valid moves (64)
+     3. the board */
+
+  size_t idx = 0;
+
+  ret[idx++] = (float)game->curr_player;
+
+  // ret[1 + x + y*8] = can_play
+  for( size_t y = 0; y < 8; ++y ) {
+    for( size_t x = 0; x < 8; ++x ) {
+      ret[idx++] = ctx->own_moves & othello_bit_mask( x, y ) ? 1.0f : 0.0f;
+    }
+  }
+
+  // save board, also row major
+  // each player in separate array
+  for( size_t y = 0; y < 8; ++y ) {
+    for( size_t x = 0; x < 8; ++x ) {
+      bool occupied = game->white & othello_bit_mask( x, y );
+      ret[idx++] = occupied ? 1.0f : 0.0f;
+    }
+  }
+
+  for( size_t y = 0; y < 8; ++y ) {
+    for( size_t x = 0; x < 8; ++x ) {
+      bool occupied = game->black & othello_bit_mask( x, y );
+      ret[idx++] = occupied ? 1.0f : 0.0f;
+    }
+  }
+
+  assert( idx == 1+64+128 );
+}

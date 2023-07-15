@@ -1,0 +1,10 @@
+[inputs]
+filenames = ["wthor_files/WTH_1977.wtb", "wthor_files/WTH_1978.wtb"]
+
+[outputs]
+ids_filename = "debug/ids_1"
+boards_filename = "debug/boards_1"
+policy_filename = "debug/policy_1"
+
+[settings]
+include_flips = true

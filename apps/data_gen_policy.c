@@ -1,13 +1,13 @@
-//#include "../datastruct/u128set.h"
 #include "../libcommon/common.h"
 #include "../libcommon/hash.h"
-#include "../libcomputer/mcts.h"
+#include "../libcomputer/nn.h"
 #include "../libothello/othello.h"
 #include "../misc/wthor.h"
 
 #include <fcntl.h>
 #include <inttypes.h>
 #include <libgen.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -15,31 +15,245 @@
 #include <string.h>
 #include <sys/errno.h>
 #include <sys/mman.h>
+#include <toml.h>
 #include <unistd.h>
 
-static char const * const ALL_FILES[] = {
-  "wthor_files/WTH_1977.wtb", "wthor_files/WTH_1978.wtb", "wthor_files/WTH_1979.wtb",
-  "wthor_files/WTH_1980.wtb", "wthor_files/WTH_1981.wtb", "wthor_files/WTH_1982.wtb",
-  "wthor_files/WTH_1983.wtb", "wthor_files/WTH_1984.wtb", "wthor_files/WTH_1985.wtb",
-  "wthor_files/WTH_1986.wtb", "wthor_files/WTH_1987.wtb", "wthor_files/WTH_1988.wtb",
-  "wthor_files/WTH_1989.wtb", "wthor_files/WTH_1990.wtb", "wthor_files/WTH_1991.wtb",
-  "wthor_files/WTH_1992.wtb", "wthor_files/WTH_1993.wtb", "wthor_files/WTH_1994.wtb",
-  "wthor_files/WTH_1995.wtb", "wthor_files/WTH_1996.wtb", "wthor_files/WTH_1997.wtb",
-  "wthor_files/WTH_1998.wtb", "wthor_files/WTH_1999.wtb", "wthor_files/WTH_2000.wtb",
-  "wthor_files/WTH_2001.wtb", "wthor_files/WTH_2002.wtb", "wthor_files/WTH_2003.wtb",
-  "wthor_files/WTH_2004.wtb", "wthor_files/WTH_2005.wtb", "wthor_files/WTH_2006.wtb",
-  "wthor_files/WTH_2007.wtb", "wthor_files/WTH_2008.wtb", "wthor_files/WTH_2009.wtb",
-  "wthor_files/WTH_2010.wtb", "wthor_files/WTH_2011.wtb", "wthor_files/WTH_2012.wtb",
-  "wthor_files/WTH_2013.wtb", "wthor_files/WTH_2014.wtb", "wthor_files/WTH_2015.wtb",
-  "wthor_files/WTH_2016.wtb", "wthor_files/WTH_2017.wtb", "wthor_files/WTH_2018.wtb",
-  "wthor_files/WTH_2019.wtb", "wthor_files/WTH_2020.wtb", "wthor_files/WTH_2021.wtb",
-  "wthor_files/WTH_2022.wtb",
-};
+/// ----------------------------------
+/// config
+
+#define CONFIG_FILES_MAX 64
+
+typedef struct {
+  // inputs
+  char   wthor_filenames[CONFIG_FILES_MAX][PATH_MAX+1]; // big!
+  size_t n_wthor_filenames;
+
+  // outputs
+  char ids_file[PATH_MAX+1];
+  char boards_file[PATH_MAX+1];
+  char policy_file[PATH_MAX+1];
+
+  // flags
+  bool include_flips;
+  // FIXME should the id behavior be configurable?
+  // FIXME should we have any other variants of NN input? Is the valid move set helping?
+  // FIXME should we have a flag for including/exluding duplicated board states
+} config_t;
+
+static config_t
+load_config( char const * filename )
+{
+  config_t ret;
+  memset( &ret, 0, sizeof(ret) );
+
+  FILE * config_file = fopen( filename, "r" );
+  if( !config_file ) Fail( "Failed to open config file %s", filename );
+
+  char errbuf[200]; memset( errbuf, 0, sizeof(errbuf) );
+  toml_table_t const * toml_config = toml_parse_file( config_file, errbuf, sizeof(errbuf) );
+  if( !toml_config ) Fail( "Failed to load toml file with %s", errbuf );
+
+  { // -- inputs
+    toml_table_t const * inputs_table = toml_table_in( toml_config, "inputs" );
+    if( !inputs_table ) Fail( "Expected [inputs] table at top level of config" );
+
+    toml_array_t const * files = toml_array_in( inputs_table, "filenames" );
+    if( !files ) Fail( "Expected [inputs.filenames] array" );
+    if( toml_array_type( files ) != 's' ) Fail( "[inputs.filenames] array is not array of strings" );
+    if( toml_array_nelem( files ) > CONFIG_FILES_MAX ) {
+      Fail( "Cannot handle more than %d files, but got %d", CONFIG_FILES_MAX, toml_array_nelem( files ) );
+    }
+
+    for( int i = 0; i < toml_array_nelem( files ); ++i ) {
+      struct toml_datum_t d = toml_string_at( files, i );
+      if( !d.ok ) Fail( "shouldn't happen" );
+      if( strlen( d.u.s ) >= PATH_MAX ) Fail( "Filename %s is longer than PATH_MAX", d.u.s );
+      memcpy( ret.wthor_filenames[i], d.u.s, strlen( d.u.s )+1 );
+      free( d.u.s );
+    }
+
+    ret.n_wthor_filenames = (size_t)toml_array_nelem( files );
+  }
+
+  { // -- outputs
+    toml_table_t const * outputs_table = toml_table_in( toml_config, "outputs" );
+    if( !outputs_table ) Fail( "Expected [outputs] table at top level of config" );
+
+    // FIXME make compression optional?
+
+    struct toml_datum_t d = toml_string_in( outputs_table, "ids_filename" );
+    if( !d.ok ) Fail( "Expected outputs.ids_filename" );
+    if( strlen( d.u.s ) > PATH_MAX ) Fail( "outputs.ids_filename too long" );
+
+    memcpy( ret.ids_file, d.u.s, strlen(d.u.s) );
+    free( d.u.s );
+
+    d = toml_string_in( outputs_table, "boards_filename" );
+    if( !d.ok ) Fail( "Expected outputs.boards_filename" );
+    if( strlen( d.u.s ) > PATH_MAX ) Fail( "outputs.boards_filename too long" );
+
+    memcpy( ret.boards_file, d.u.s, strlen(d.u.s) );
+    free( d.u.s );
+
+    d = toml_string_in( outputs_table, "policy_filename" );
+    if( !d.ok ) Fail( "Expected outputs.policy_filename" );
+    if( strlen( d.u.s ) > PATH_MAX ) Fail( "outputs.policy_filename too long" );
+
+    memcpy( ret.policy_file, d.u.s, strlen(d.u.s) );
+    free( d.u.s );
+  }
+
+  { // -- flags
+    toml_table_t * settings_table = toml_table_in( toml_config, "settings" );
+    if( !settings_table ) Fail( "Expected [settings] table at top level of config" );
+
+    toml_datum_t toml_include_flips = toml_bool_in( settings_table, "include_flips" );
+    if( !toml_include_flips.ok ) Fail( "expected boolean at settings.include_flips" );
+
+    ret.include_flips = toml_include_flips.u.b;
+  }
+
+  toml_free( (void*)toml_config );
+  fclose( config_file );
+  return ret;
+}
+
+// ---------------------------
+// output managment
+
+typedef struct {
+  FILE * ids;
+  FILE * input;
+  FILE * policy;
+} outputs_t;
+
+static outputs_t
+outputs_from_config( config_t const * config )
+{
+  outputs_t outputs;
+
+  outputs.ids = fopen( config->ids_file, "w" );
+  if( !outputs.ids ) Fail( "Failed to open board ids file at %s", config->ids_file );
+
+  outputs.input = fopen( config->boards_file, "w" ); // FIXME rationalize names
+  if( !outputs.input ) Fail( "Failed to open boards file at %s", config->boards_file );
+
+  outputs.policy = fopen( config->policy_file, "w" );
+  if( !outputs.policy ) Fail( "Failed to open policy file at %s", config->policy_file );
+
+  return outputs;
+}
+
+static void
+outputs_close( outputs_t * outputs )
+{
+  fclose( outputs->ids );
+  fclose( outputs->input );
+  fclose( outputs->policy );
+}
+
+static void
+outputs_save_game( outputs_t const *          outputs,
+                   uint64_t                   id,
+                   othello_game_t const *     game,
+                   othello_move_ctx_t const * ctx,
+                   uint8_t                    move_x,
+                   uint8_t                    move_y )
+{
+  /* We produce three output files:
+     1. Game ID file, used to select train/test split across _games_ not just board states
+     2. The NN input file, contains the game repr that is fed into the NN
+     3. The policy output, expected output from the NN */
+
+  float input[193] = { 0 };
+  float policy[64] = { 0 };
+
+  nn_format_input( game, ctx, input );
+  policy[move_x + move_y*8] = 1.0;
+
+  if( 1!=fwrite( &id, sizeof(id), 1, outputs->ids ) ) {
+    Fail( "Failed to write to game ids file" );
+  }
+
+  if( 1!=fwrite( input, sizeof(input), 1, outputs->input ) ) {
+    Fail( "Failed to write to output file" );
+  }
+
+  if( 1!=fwrite( policy, sizeof(policy), 1, outputs->policy ) ) {
+    Fail( "Failed to write to output file" );
+  }
+}
+
+/// -----------------------------
+/// flipperoo
+
+static void
+flip_full_game( othello_game_t const * game,
+                uint8_t                move_x,
+                uint8_t                move_y,
+                uint8_t *              out_flipped_move_x,
+                uint8_t *              out_flipped_move_y,
+                othello_game_t *       out_flipped_game,
+                othello_move_ctx_t *   out_flipped_ctx )
+{
+
+  memset( out_flipped_game, 0, sizeof(*out_flipped_game) );
+
+  // -- setup move
+  *out_flipped_move_x = 7 - move_x;
+  *out_flipped_move_y = 7 - move_y;
+
+  // -- setup game
+
+  out_flipped_game->curr_player = game->curr_player;
+
+  for( uint64_t x = 0; x < 8; ++x ) {
+    for( uint64_t y = 0; y < 8; ++y ) {
+      uint64_t flipx = 7 - x;
+      uint64_t flipy = 7 - y;
+
+      if( game->white & othello_bit_mask( x, y ) ) {
+        // should be no piece here yet in new board
+        assert( (out_flipped_game->white & othello_bit_mask( flipx, flipy )) ==0 );
+        assert( (out_flipped_game->black & othello_bit_mask( flipx, flipy )) ==0 );
+
+        out_flipped_game->white |= othello_bit_mask( flipx, flipy );
+      }
+
+      if( game->black & othello_bit_mask( x, y ) ) {
+        // should be no piece here yet in new board
+        assert( (out_flipped_game->white & othello_bit_mask( flipx, flipy )) ==0 );
+        assert( (out_flipped_game->black & othello_bit_mask( flipx, flipy )) ==0 );
+
+        out_flipped_game->black |= othello_bit_mask( flipx, flipy );
+      }
+    }
+  }
+
+  // -- setup ctx
+  uint8_t winner;
+  if( !othello_game_start_move( out_flipped_game, out_flipped_ctx, &winner ) ) {
+    Fail( "failed to start flip game move" );
+  }
+
+  // sanity check
+  // copy to avoid mutating
+  othello_game_t     _tmp_game = *out_flipped_game;
+  othello_move_ctx_t _tmp_ctx  = *out_flipped_ctx;
+
+  if( !othello_game_make_move( &_tmp_game, &_tmp_ctx, othello_bit_mask( *out_flipped_move_x, *out_flipped_move_y ) ) ) {
+    Fail( "Invalid flipped moved saved to file" );
+  }
+}
+
+/// --------------------
+/// actual wthor logic
 
 static wthor_file_t const *
 mmap_file( char const * fname )
 {
   int fd = open( fname, O_RDONLY );
+  if( fd==-1 ) Fail( "Failed to open %s", fname );
 
   wthor_header_t hdr[1];
   if( sizeof(hdr)!=read( fd, hdr, sizeof(hdr) ) ) {
@@ -48,6 +262,7 @@ mmap_file( char const * fname )
 
   /* 0|8 -> 8x8
      10 -> 10x10 */
+
   if( hdr->p1 != 0 && hdr->p1 != 8 ) {
     Fail( "Unexpected value in header" );
   }
@@ -62,166 +277,11 @@ mmap_file( char const * fname )
   return mem;
 }
 
-static void
-format_nn_game_input( float *                    ret,
-                      othello_game_t const *     game,
-                      othello_move_ctx_t const * ctx )
-{
-  /* save to the input vector:
-     1. the current player
-     2. the valid moves (64)
-     3. the board */
-
-  size_t idx = 0;
-
-  ret[idx++] = (float)game->curr_player;
-
-  // ret[1 + x + y*8] = can_play
-  for( size_t y = 0; y < 8; ++y ) {
-    for( size_t x = 0; x < 8; ++x ) {
-      ret[idx++] = ctx->own_moves & othello_bit_mask( x, y ) ? 1.0f : 0.0f;
-    }
-  }
-
-  // save board, also row major
-  // each player in separate array
-  for( size_t y = 0; y < 8; ++y ) {
-    for( size_t x = 0; x < 8; ++x ) {
-      bool occupied = game->white & othello_bit_mask( x, y );
-      ret[idx++] = occupied ? 1.0f : 0.0f;
-    }
-  }
-
-  for( size_t y = 0; y < 8; ++y ) {
-    for( size_t x = 0; x < 8; ++x ) {
-      bool occupied = game->black & othello_bit_mask( x, y );
-      ret[idx++] = occupied ? 1.0f : 0.0f;
-    }
-  }
-
-  assert( idx == 1+64+128 );
-}
-
-static void
-flip_180( uint64_t   x,
-          uint64_t   y,
-          uint64_t * out_x,
-          uint64_t * out_y )
-{
-  // 0 -> 7
-  // 1 -> 6
-  // ..
-  // 7 -> 0
-
-  *out_x = 7 - x;
-  *out_y = 7 - y;
-}
-
-// flip 180 degress
-static othello_game_t
-flip_game( othello_game_t const * game )
-{
-  othello_game_t ret[1];
-  memset( ret, 0, sizeof(ret) );
-
-  ret->curr_player = game->curr_player;
-
-  for( uint64_t x = 0; x < 8; ++x ) {
-    for( uint64_t y = 0; y < 8; ++y ) {
-      uint64_t flipx, flipy;
-      flip_180( x, y, &flipx, &flipy );
-
-      if( game->white & othello_bit_mask( x, y ) ) {
-        // should be no piece here yet in new board
-        assert( (ret->white & othello_bit_mask( flipx, flipy )) ==0 );
-        assert( (ret->black & othello_bit_mask( flipx, flipy )) ==0 );
-
-        ret->white |= othello_bit_mask( flipx, flipy );
-      }
-
-      if( game->black & othello_bit_mask( x, y ) ) {
-        // should be no piece here yet in new board
-        assert( (ret->white & othello_bit_mask( flipx, flipy )) ==0 );
-        assert( (ret->black & othello_bit_mask( flipx, flipy )) ==0 );
-
-        ret->black |= othello_bit_mask( flipx, flipy );
-      }
-    }
-  }
-
-  return *ret;
-}
-
-static void
-save_game_inner( uint64_t                   id,
-                 othello_game_t const *     game,
-                 othello_move_ctx_t const * ctx,
-                 uint8_t                    move_x,
-                 uint8_t                    move_y,
-                 FILE *                     game_ids,
-                 FILE *                     input_file,
-                 FILE *                     policy_file )
-{
-  float input[193] = { 0 };
-  float policy[64] = { 0 };
-
-  format_nn_game_input( input, game, ctx );
-  policy[move_x + move_y*8] = 1.0;
-
-  if( 1!=fwrite( &id, sizeof(id), 1, game_ids ) ) {
-    Fail( "Failed to write to game ids file" );
-  }
-
-  if( 1!=fwrite( input, sizeof(input), 1, input_file ) ) {
-    Fail( "Failed to write to output file" );
-  }
-
-  if( 1!=fwrite( policy, sizeof(policy), 1, policy_file ) ) {
-    Fail( "Failed to write to output file" );
-  }
-}
-
-static void
-save_game( uint64_t                   id,
-           othello_game_t const *     game,
-           othello_move_ctx_t const * ctx,
-           uint8_t                    move_x,
-           uint8_t                    move_y,
-           FILE *                     game_ids,
-           FILE *                     input_file,
-           FILE *                     policy_file )
-{
-  save_game_inner( id, game, ctx, move_x, move_y, game_ids, input_file, policy_file );
-
-  // flip the board 180 degress and save that too
-
-  uint8_t            winner;
-  othello_move_ctx_t flipped_ctx[1];
-  othello_game_t     flipped_game[1] = { flip_game( game ) };
-
-  uint64_t flipped_x, flipped_y;
-  flip_180( move_x, move_y, &flipped_x, &flipped_y );
-
-  if( !othello_game_start_move( flipped_game, flipped_ctx, &winner ) ) {
-    othello_board_print( game );
-    othello_board_print( flipped_game );
-    Fail( "failed to start flip game move" );
-  }
-
-  save_game_inner( id, flipped_game, flipped_ctx, (uint8_t)flipped_x, (uint8_t)flipped_y, game_ids, input_file, policy_file );
-
-  // sanity check
-  if( !othello_game_make_move( flipped_game, flipped_ctx, othello_bit_mask( flipped_x, flipped_y ) ) ) {
-    Fail( "Invalid flipped moved saved to file" );
-  }
-}
-
 static uint64_t
-run_all_games_in_file( wthor_file_t const * file,
+run_all_games_in_file( config_t const *     config,
+                       outputs_t const *    outputs,
                        uint64_t             starting_id,
-                       FILE *               game_ids,
-                       FILE *               input_file,
-                       FILE *               policy_file )
+                       wthor_file_t const * file )
 {
   for( size_t game_idx = 0; game_idx < wthor_file_n_games( file ); ++game_idx ) {
     wthor_game_t const * fgame = file->games + game_idx;
@@ -276,7 +336,19 @@ run_all_games_in_file( wthor_file_t const * file,
       /* reset move ctx since we may have switched players */
       if( !othello_game_start_move( game, ctx, &winner ) ) Fail( "game should not be over" );
 
-      save_game( starting_id, game, ctx, x, y, game_ids, input_file, policy_file );
+      outputs_save_game( outputs, starting_id, game, ctx, x, y );
+
+      if( config->include_flips ) {
+        othello_game_t     flipped_game[1];
+        othello_move_ctx_t flipped_ctx[1];
+        uint8_t            flipped_x, flipped_y;
+
+        flip_full_game( game, x, y, &flipped_x, &flipped_y, flipped_game, flipped_ctx );
+
+        /* Treat the flipped game as a unique game for the purposes of train/test split */
+        starting_id += 1;
+        outputs_save_game( outputs, starting_id, flipped_game, flipped_ctx, flipped_x, flipped_y );
+      }
 
       bool valid = othello_game_make_move( game, ctx, othello_bit_mask( x, y ) );
       if( !valid ) {
@@ -291,29 +363,37 @@ run_all_games_in_file( wthor_file_t const * file,
   return starting_id;
 }
 
-int main( void )
+int
+main( int     argc,
+      char ** argv )
 {
-  FILE * ids_file = fopen( "sym_ids_withdups.dat", "w" );
-  if( !ids_file ) Fail( "Failed to open board ids file" );
+  outputs_t outputs;
+  config_t  config;
 
-  FILE * input_file = fopen( "sym_input_withdups.dat", "w" );
-  if( !input_file ) Fail( "Failed to open input file" );
+  if( argc != 2 ) Fail( "Usage: %s <config>", argv[0] );
+  config = load_config( argv[1] );
 
-  FILE * policy_file = fopen( "sym_policy_withdups.dat", "w" );
-  if( !policy_file ) Fail( "Failed to open policy file" );
+  printf( "----------------------------\n" );
+  printf( "Config loaded:\n" );
+  printf( "  Num Input files: %zu\n", config.n_wthor_filenames );
+  printf( "  Include flips: %s\n", config.include_flips ? "yes" : "no" );
+  printf( "\n" );
+  printf( "Outputs:\n" );
+  printf( "  ids_file:    %s\n", config.ids_file );
+  printf( "  boards_file: %s\n", config.boards_file );
+  printf( "  policy_file: %s\n", config.policy_file );
+  printf( "----------------------------\n" );
+
+  outputs = outputs_from_config( &config );
 
   uint64_t id = 0;
-  /* for( size_t file_idx = 0; file_idx < ARRAY_SIZE( ALL_FILES ); ++file_idx ) { */
-  for( ssize_t file_idx = ARRAY_SIZE( ALL_FILES )-1; file_idx >= 0; --file_idx ) {
-    printf( "On file %zu of %zu\n", file_idx, ARRAY_SIZE( ALL_FILES ) );
-    wthor_file_t const * file = mmap_file( ALL_FILES[file_idx] );
-
-    id = run_all_games_in_file( file, id, ids_file, input_file, policy_file );
+  for( size_t file_idx = 0; file_idx < config.n_wthor_filenames; ++file_idx ) {
+    printf( "On file %zu of %zu\n", file_idx, config.n_wthor_filenames );
+    wthor_file_t const * file = mmap_file( config.wthor_filenames[file_idx] );
+    id = run_all_games_in_file( &config, &outputs, id, file );
   }
 
-  fclose( policy_file );
-  fclose( input_file );
-  fclose( ids_file );
+  outputs_close( &outputs );
 
   return 0;
 }

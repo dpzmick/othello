@@ -9,10 +9,7 @@ if (NOT EMSCRIPTEN)
   endif()
 
   add_executable(data_gen_policy data_gen_policy.c)
-  target_link_libraries(data_gen_policy libcommon libothello libcomputer)
-
-  add_executable(print_dataset print_dataset.c)
-  target_link_libraries(print_dataset libcommon libothello libcomputer)
+  target_link_libraries(data_gen_policy libcommon libothello libcomputer tomlc99)
 
   add_executable(thunderdome thunderdome.c)
   target_link_libraries(thunderdome libcommon libothello libcomputer m)
