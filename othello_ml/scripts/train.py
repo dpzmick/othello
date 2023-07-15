@@ -63,7 +63,7 @@ def trainer(model, criterion, optimizer, train, test, epochs=5, start_epoch=0, d
                 "test": test_correct/test_total,
                 "elapsed": stop_ts - start_ts}
 
-        #wandb.log(data)
+        wandb.log(data)
         print(f"epoch: {epoch+1}, {data}")
 
         # if epoch % 100 == 0 and DO_CHECKPOINT:
@@ -76,6 +76,8 @@ def trainer(model, criterion, optimizer, train, test, epochs=5, start_epoch=0, d
 
 c = ExperimentConfig.from_experiment_dir(sys.argv[1])
 batch_size = c.net_config.batch_size
+
+wandb.init(project='othello', name=c.name) # store full config here?
 
 if torch.cuda.is_available():
     print("using cuda")
@@ -112,7 +114,7 @@ dataloader_test = SimpleDataLoader(dataset_test, int(test_policy.shape[0]/8))
 
 net = NN(c.net_config.N1, c.net_config.N2)
 net.to(device)
-#wandb.watch(net, log_freq=5, log='all')
+wandb.watch(net, log_freq=5, log='all')
 
 optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True)
 
@@ -135,4 +137,4 @@ def loss(y_hat, batch_y, _valid):
     return ce
 
 print('starting training')
-trainer(net, loss, optim, dataloader, dataloader_test, epochs=8192, start_epoch=epoch)
+trainer(net, loss, optim, dataloader, dataloader_test, epochs=128, start_epoch=epoch)

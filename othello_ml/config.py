@@ -68,9 +68,9 @@ class NetConfig(object):
 
 
 class ExperimentConfig(object):
-    def __init__(self, name, experiment_dir, train_perc, wthor_config, dataset_config, net_config):
+    def __init__(self, name, experiment_root, train_perc, wthor_config, dataset_config, net_config):
         self.name = name
-        self.experiment_dir = experiment_dir
+        self.experiment_dir = experiment_root + "/" + name
         self.train_perc = train_perc
 
         self.wthor_config = wthor_config
