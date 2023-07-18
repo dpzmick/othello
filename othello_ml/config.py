@@ -1,112 +1,91 @@
 import os
 import pathlib
-import pickle
 import toml
 
-class WThorConfig(object):
-    # FIXME add some simplified setting for a debug config
-    def __init__(self, data_dir):
-        filenames = []
+# need something fancier for styles of model, maybe just a constructor and array of args?
 
-        for f in os.listdir(data_dir):
-            if f.endswith(".wtb"):
-                filenames.append(f)
+model_styles = {
+    "small": {
+        "model_name": "NN",
+        "model_params": {"N1": 1024, "N2": 1024},
+    },
+    "medium": {
+        "model_name": "NN",
+        "model_params": {"N1": 2048, "N2": 1024},
+    },
+    "large": {
+        "model_name": "NN",
+        "model_params": {"N1": 2048, "N2": 2048},
+    },
+}
 
-        # order matters here, sort alpha numerically
-        # we must keep the order the same across experiments
-        self.filenames = list(map(lambda e: data_dir + '/' + e, sorted(filenames)))
-        self.filenames = self.filenames[0:10]
+def make_config(
+        experiment_root, experiment_name, wthor_dir="/var/nfs/dpzmick/othello/wthor_files",
+        debug=True,
+        # data gen args
+        include_flips=True,
+        # split args
+        train_perc=0.8,
+        # train args
+        model_style="small", loss_variant="loss_without_invalid", weight_decay=0.0, batch_size=2048):
 
+    name = f'{experiment_name}_{model_style}'
+    if debug:
+        name += '_debug'
+    else:
+        name += '_full'
 
-class DatasetConfig(object):
-    def __init__(self, include_flips):
-        self.include_flips = include_flips
+    # salt the name with a timestamp or something?
 
-    def ids_filename(self, datadir):
-        return f"{datadir}/ids.dat"
+    experiment_dir = f'{experiment_root}/{name}/'
 
-    def boards_filename(self, datadir):
-        return f"{datadir}/boards.dat"
+    wthor_filenames = []
+    for f in os.listdir(wthor_dir):
+        if f.endswith(".wtb"):
+            wthor_filenames.append(f)
 
-    def policy_filename(self, datadir):
-        return f"{datadir}/policy.dat"
+    # order matters here, sort alpha numerically
+    # we must keep the order the same across experiments
+    wthor_filenames = list(map(lambda e: wthor_dir + '/' + e, sorted(wthor_filenames)))
 
-    def data_gen_toml_filename(self, datadir):
-        return f"{datadir}/config.toml"
+    if debug:
+        wthor_filenames = wthor_filenames[0:10]
 
-    def make_data_gen_toml(self, datadir, wthor_config):
-        config = {
-            "inputs": {
-                "filenames": wthor_config.filenames
-            },
-            "outputs": {
-                "ids_filename":    self.ids_filename(datadir),
-                "boards_filename": self.boards_filename(datadir),
-                "policy_filename": self.policy_filename(datadir),
-            },
-            "settings": {
-                "include_flips": self.include_flips,
-            }
+    config = {
+        "name": name,
+        "experiment_dir": experiment_dir,
+        "log_dir": experiment_dir + '/logs',
+        "files": {
+            # data gen inputs
+            "wthor_files": wthor_filenames,
+            # data gen outputs / test/train split inputs
+            "ids_filename": f'{experiment_dir}/datasets/ids.dat.zst',
+            "boards_filename": f'{experiment_dir}/datasets/boards.dat.zst',
+            "policy_filename": f'{experiment_dir}/datasets/policy.dat.zst',
+            # test/train split outputs / training inputs
+            "split_filename": f'{experiment_dir}/datasets/split.pt.lz4',
+        },
+        "settings": {
+            "include_flips": include_flips,
+            "train_perc": train_perc, # test/train split
+            "batch_size": batch_size, # training
+            "loss_variant": loss_variant,
+            "weight_decay": weight_decay,
         }
+    }
 
-        with open(self.data_gen_toml_filename(datadir), "w") as f:
-            toml.dump(config, f)
+    config["settings"].update(model_styles[model_style])
 
-    def make_data_gen_command(self, datadir):
-        return f"/var/nfs/dpzmick/othello/build/apps/data_gen_policy {self.data_gen_toml_filename(datadir)}"
+    return config
 
-    def make_compress_commands(self, datadir):
-        for filename in [self.ids_filename(datadir), self.boards_filename(datadir), self.policy_filename(datadir)]:
-            yield f"zstd -f {filename}"
+def setup(config):
+    pathlib.Path(config["experiment_dir"]).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(config["experiment_dir"] + '/datasets').mkdir(parents=True, exist_ok=True)
+    pathlib.Path(config["log_dir"]).mkdir(parents=True, exist_ok=True)
 
+    with open(config["experiment_dir"] + '/config.toml', "w") as f:
+        toml.dump(config, f)
 
-class NetConfig(object):
-    def __init__(self, batch_size, N1, N2):
-        self.batch_size = batch_size
-        self.N1 = N1
-        self.N2 = N2
-
-
-class ExperimentConfig(object):
-    def __init__(self, name, experiment_root, train_perc, wthor_config, dataset_config, net_config):
-        self.name = name
-        self.experiment_dir = experiment_root + "/" + name
-        self.train_perc = train_perc
-
-        self.wthor_config = wthor_config
-        self.dataset_config = dataset_config
-        self.net_config = net_config
-
-    @classmethod
-    def from_experiment_dir(cls, experiment_dir):
-        with open(f"{experiment_dir}/config.pkl", "rb") as f:
-            return pickle.load(f)
-
-    def datadir(self):
-        return self.experiment_dir + '/datasets'
-
-    def compressed_ids_filename(self):
-        return self.dataset_config.ids_filename(self.datadir()) + '.zst'
-
-    def compressed_boards_filename(self):
-        return self.dataset_config.boards_filename(self.datadir()) + '.zst'
-
-    def compressed_policy_filename(self):
-        return self.dataset_config.policy_filename(self.datadir()) + '.zst'
-
-    def compressed_split_filename(self):
-        return f'{self.datadir()}/split.pt.lz4'
-
-    def setup(self):
-        pathlib.Path(self.datadir()).mkdir(parents=True, exist_ok=True)
-
-        with open(f"{self.experiment_dir}/config.pkl", "wb") as f:
-            pickle.dump(self, f)
-
-        self.dataset_config.make_data_gen_toml(self.datadir(), self.wthor_config)
-
-    def data_gen_command(self):
-        return self.dataset_config.make_data_gen_command(self.datadir())
-
-    def compression_commands(self):
-        return self.dataset_config.make_compress_commands(self.datadir())
+def open_config(experiment_dir):
+    with open(experiment_dir + '/config.toml', "r") as f:
+        return toml.load(f)

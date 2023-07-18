@@ -1,4 +1,4 @@
-from ..config import ExperimentConfig, WThorConfig, DatasetConfig
+from ..config import open_config
 import sys
 
 import torch
@@ -12,17 +12,17 @@ import pyzstd
 import time
 
 if __name__ == "__main__":
-    c = ExperimentConfig.from_experiment_dir(sys.argv[1])
+    c = open_config(sys.argv[1])
 
-    with open(c.compressed_ids_filename(),  'rb') as f:
+    with open(c["files"]["ids_filename"],  'rb') as f:
         decompressed_data = pyzstd.decompress(f.read())
         ids = np.frombuffer(decompressed_data, dtype=np.uint64)
 
-    with open(c.compressed_boards_filename(), 'rb') as f:
+    with open(c["files"]["boards_filename"],  'rb') as f:
         decompressed_data = pyzstd.decompress(f.read())
         inputs = np.frombuffer(decompressed_data, dtype=np.float32).reshape( (len(ids), 1+64+128) )
 
-    with open(c.compressed_policy_filename(), 'rb') as f:
+    with open(c["files"]["policy_filename"],  'rb') as f:
         decompressed_data = pyzstd.decompress(f.read())
         policy = np.frombuffer(decompressed_data, dtype=np.float32).reshape( (len(ids), 64) )
 
@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     print(f"With {len(unique_ids)} unique games")
 
-    n_train = int(c.train_perc * len(unique_ids))
+    n_train = int(c["settings"]["train_perc"] * len(unique_ids))
     train_ids, test_ids = unique_ids[0:n_train], unique_ids[n_train:]
 
     print(f"Using {len(train_ids)} games to train and {len(test_ids)} games to test")
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     test_inputs = torch.from_numpy(test_inputs)
     test_policy = torch.from_numpy(test_policy)
 
-    with lz4.frame.open(c.compressed_split_filename(), mode='wb') as f:
+    with lz4.frame.open(c["files"]["split_filename"], mode='wb') as f:
         torch.save({
             'train_inputs': train_inputs,
             'train_policy': train_policy,

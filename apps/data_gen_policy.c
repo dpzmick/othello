@@ -3,6 +3,7 @@
 #include "../libcomputer/nn.h"
 #include "../libothello/othello.h"
 #include "../misc/wthor.h"
+#include "zstd_file.h"
 
 #include <fcntl.h>
 #include <inttypes.h>
@@ -43,6 +44,8 @@ typedef struct {
 static config_t
 load_config( char const * filename )
 {
+  toml_datum_t d;
+
   config_t ret;
   memset( &ret, 0, sizeof(ret) );
 
@@ -53,65 +56,58 @@ load_config( char const * filename )
   toml_table_t const * toml_config = toml_parse_file( config_file, errbuf, sizeof(errbuf) );
   if( !toml_config ) Fail( "Failed to load toml file with %s", errbuf );
 
-  { // -- inputs
-    toml_table_t const * inputs_table = toml_table_in( toml_config, "inputs" );
-    if( !inputs_table ) Fail( "Expected [inputs] table at top level of config" );
+  toml_table_t const * files_table = toml_table_in( toml_config, "files" );
+  if( !files_table ) Fail( "Expected [files] table at top level of config" );
 
-    toml_array_t const * files = toml_array_in( inputs_table, "filenames" );
-    if( !files ) Fail( "Expected [inputs.filenames] array" );
-    if( toml_array_type( files ) != 's' ) Fail( "[inputs.filenames] array is not array of strings" );
-    if( toml_array_nelem( files ) > CONFIG_FILES_MAX ) {
-      Fail( "Cannot handle more than %d files, but got %d", CONFIG_FILES_MAX, toml_array_nelem( files ) );
-    }
+  // -- inputs
 
-    for( int i = 0; i < toml_array_nelem( files ); ++i ) {
-      struct toml_datum_t d = toml_string_at( files, i );
-      if( !d.ok ) Fail( "shouldn't happen" );
-      if( strlen( d.u.s ) >= PATH_MAX ) Fail( "Filename %s is longer than PATH_MAX", d.u.s );
-      memcpy( ret.wthor_filenames[i], d.u.s, strlen( d.u.s )+1 );
-      free( d.u.s );
-    }
-
-    ret.n_wthor_filenames = (size_t)toml_array_nelem( files );
+  toml_array_t const * wthor_files = toml_array_in( files_table, "wthor_files" );
+  if( !wthor_files ) Fail( "Expected [files.wthor_files] array" );
+  if( toml_array_type( wthor_files ) != 's' ) Fail( "[files.wthor_files] array is not array of strings" );
+  if( toml_array_nelem( wthor_files ) > CONFIG_FILES_MAX ) {
+    Fail( "Cannot handle more than %d files, but got %d", CONFIG_FILES_MAX, toml_array_nelem( wthor_files ) );
   }
 
-  { // -- outputs
-    toml_table_t const * outputs_table = toml_table_in( toml_config, "outputs" );
-    if( !outputs_table ) Fail( "Expected [outputs] table at top level of config" );
-
-    // FIXME make compression optional?
-
-    struct toml_datum_t d = toml_string_in( outputs_table, "ids_filename" );
-    if( !d.ok ) Fail( "Expected outputs.ids_filename" );
-    if( strlen( d.u.s ) > PATH_MAX ) Fail( "outputs.ids_filename too long" );
-
-    memcpy( ret.ids_file, d.u.s, strlen(d.u.s) );
-    free( d.u.s );
-
-    d = toml_string_in( outputs_table, "boards_filename" );
-    if( !d.ok ) Fail( "Expected outputs.boards_filename" );
-    if( strlen( d.u.s ) > PATH_MAX ) Fail( "outputs.boards_filename too long" );
-
-    memcpy( ret.boards_file, d.u.s, strlen(d.u.s) );
-    free( d.u.s );
-
-    d = toml_string_in( outputs_table, "policy_filename" );
-    if( !d.ok ) Fail( "Expected outputs.policy_filename" );
-    if( strlen( d.u.s ) > PATH_MAX ) Fail( "outputs.policy_filename too long" );
-
-    memcpy( ret.policy_file, d.u.s, strlen(d.u.s) );
+  for( int i = 0; i < toml_array_nelem( wthor_files ); ++i ) {
+    d = toml_string_at( wthor_files, i );
+    if( !d.ok ) Fail( "shouldn't happen" );
+    if( strlen( d.u.s ) >= PATH_MAX ) Fail( "Filename %s is longer than PATH_MAX", d.u.s );
+    memcpy( ret.wthor_filenames[i], d.u.s, strlen( d.u.s )+1 );
     free( d.u.s );
   }
 
-  { // -- flags
-    toml_table_t * settings_table = toml_table_in( toml_config, "settings" );
-    if( !settings_table ) Fail( "Expected [settings] table at top level of config" );
+  ret.n_wthor_filenames = (size_t)toml_array_nelem( wthor_files );
 
-    toml_datum_t toml_include_flips = toml_bool_in( settings_table, "include_flips" );
-    if( !toml_include_flips.ok ) Fail( "expected boolean at settings.include_flips" );
+  // -- outputs
 
-    ret.include_flips = toml_include_flips.u.b;
-  }
+  d = toml_string_in( files_table, "ids_filename" );
+  if( !d.ok ) Fail( "Expected files.ids_filename" );
+  if( strlen( d.u.s ) > PATH_MAX ) Fail( "files.ids_filename too long" );
+
+  memcpy( ret.ids_file, d.u.s, strlen(d.u.s) );
+  free( d.u.s );
+
+  d = toml_string_in( files_table, "boards_filename" );
+  if( !d.ok ) Fail( "Expected files.boards_filename" );
+  if( strlen( d.u.s ) > PATH_MAX ) Fail( "files.boards_filename too long" );
+
+  memcpy( ret.boards_file, d.u.s, strlen(d.u.s) );
+  free( d.u.s );
+
+  d = toml_string_in( files_table, "policy_filename" );
+  if( !d.ok ) Fail( "Expected files.policy_filename" );
+  if( strlen( d.u.s ) > PATH_MAX ) Fail( "files.policy_filename too long" );
+
+  memcpy( ret.policy_file, d.u.s, strlen(d.u.s) );
+  free( d.u.s );
+
+  toml_table_t * settings_table = toml_table_in( toml_config, "settings" );
+  if( !settings_table ) Fail( "Expected [settings] table at top level of config" );
+
+  toml_datum_t toml_include_flips = toml_bool_in( settings_table, "include_flips" );
+  if( !toml_include_flips.ok ) Fail( "expected boolean at settings.include_flips" );
+
+  ret.include_flips = toml_include_flips.u.b;
 
   toml_free( (void*)toml_config );
   fclose( config_file );
@@ -122,9 +118,9 @@ load_config( char const * filename )
 // output managment
 
 typedef struct {
-  FILE * ids;
-  FILE * input;
-  FILE * policy;
+  zstd_file_t * ids;
+  zstd_file_t * input;
+  zstd_file_t * policy;
 } outputs_t;
 
 static outputs_t
@@ -132,13 +128,13 @@ outputs_from_config( config_t const * config )
 {
   outputs_t outputs;
 
-  outputs.ids = fopen( config->ids_file, "w" );
+  outputs.ids = zstd_file_writer( config->ids_file );
   if( !outputs.ids ) Fail( "Failed to open board ids file at %s", config->ids_file );
 
-  outputs.input = fopen( config->boards_file, "w" ); // FIXME rationalize names
+  outputs.input = zstd_file_writer( config->boards_file ); // FIXME rationalize names
   if( !outputs.input ) Fail( "Failed to open boards file at %s", config->boards_file );
 
-  outputs.policy = fopen( config->policy_file, "w" );
+  outputs.policy = zstd_file_writer( config->policy_file );
   if( !outputs.policy ) Fail( "Failed to open policy file at %s", config->policy_file );
 
   return outputs;
@@ -147,9 +143,9 @@ outputs_from_config( config_t const * config )
 static void
 outputs_close( outputs_t * outputs )
 {
-  fclose( outputs->ids );
-  fclose( outputs->input );
-  fclose( outputs->policy );
+  zstd_file_writer_close( outputs->ids );
+  zstd_file_writer_close( outputs->input );
+  zstd_file_writer_close( outputs->policy );
 }
 
 static void
@@ -171,17 +167,9 @@ outputs_save_game( outputs_t const *          outputs,
   nn_format_input( game, ctx, input );
   policy[move_x + move_y*8] = 1.0;
 
-  if( 1!=fwrite( &id, sizeof(id), 1, outputs->ids ) ) {
-    Fail( "Failed to write to game ids file" );
-  }
-
-  if( 1!=fwrite( input, sizeof(input), 1, outputs->input ) ) {
-    Fail( "Failed to write to output file" );
-  }
-
-  if( 1!=fwrite( policy, sizeof(policy), 1, outputs->policy ) ) {
-    Fail( "Failed to write to output file" );
-  }
+  zstd_file_writer_write( outputs->ids,    (void*)&id, sizeof(id) );
+  zstd_file_writer_write( outputs->input,  (void*)input, sizeof(input) );
+  zstd_file_writer_write( outputs->policy, (void*)policy, sizeof(policy) );
 }
 
 /// -----------------------------

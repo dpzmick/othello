@@ -1,121 +1,58 @@
-from .config import ExperimentConfig, WThorConfig, DatasetConfig, NetConfig
+from .config import make_config, setup
+import numpy as np
+
+# python3 -m othello_ml.pipeline | bash -
+
+experiment_root="/var/nfs/dpzmick/experiments/"
+debug = False
+
+decays = np.arange(0, 8e-4, 2e-4)
 
 configs = [
-    ExperimentConfig(
-        name="with_flips_small",
-        experiment_root="/var/nfs/dpzmick/experiments/",
-        train_perc=0.8,
-        wthor_config=WThorConfig("/var/nfs/dpzmick/othello/wthor_files"),
-        dataset_config=DatasetConfig(
-            include_flips=True
-        ),
-        net_config=NetConfig(
-            batch_size=1024,
-            N1=1024, N2=1024,
-        )
-    ),
+    make_config(experiment_root, f"decay_exp_{decay:0.5f}",
+                debug=debug, include_flips=True,
+                model_style=style,
+                weight_decay=decay)
 
-    ExperimentConfig(
-        name="with_flips_medium",
-        experiment_root="/var/nfs/dpzmick/experiments/",
-        train_perc=0.8,
-        wthor_config=WThorConfig("/var/nfs/dpzmick/othello/wthor_files"),
-        dataset_config=DatasetConfig(
-            include_flips=True
-        ),
-        net_config=NetConfig(
-            batch_size=2048,
-            N1=2048, N2=1024,
-        )
-    ),
-
-    ExperimentConfig(
-        name="with_flips_large",
-        experiment_root="/var/nfs/dpzmick/experiments/",
-        train_perc=0.8,
-        wthor_config=WThorConfig("/var/nfs/dpzmick/othello/wthor_files"),
-        dataset_config=DatasetConfig(
-            include_flips=True
-        ),
-        net_config=NetConfig(
-            batch_size=2048,
-            N1=2048, N2=2048,
-        )
-    ),
-
-    ExperimentConfig(
-        name="without_flips_small",
-        experiment_root="/var/nfs/dpzmick/experiments/",
-        train_perc=0.8,
-        wthor_config=WThorConfig("/var/nfs/dpzmick/othello/wthor_files"),
-        dataset_config=DatasetConfig(
-            include_flips=False
-        ),
-        net_config=NetConfig(
-            batch_size=1024,
-            N1=1024, N2=1024,
-        )
-    ),
-
-    ExperimentConfig(
-        name="without_flips_medium",
-        experiment_root="/var/nfs/dpzmick/experiments/",
-        train_perc=0.8,
-        wthor_config=WThorConfig("/var/nfs/dpzmick/othello/wthor_files"),
-        dataset_config=DatasetConfig(
-            include_flips=False
-        ),
-        net_config=NetConfig(
-            batch_size=2048,
-            N1=2048, N2=1024,
-        )
-    ),
-
-    ExperimentConfig(
-        name="without_flips_large",
-        experiment_root="/var/nfs/dpzmick/experiments/",
-        train_perc=0.8,
-        wthor_config=WThorConfig("/var/nfs/dpzmick/othello/wthor_files"),
-        dataset_config=DatasetConfig(
-            include_flips=False
-        ),
-        net_config=NetConfig(
-            batch_size=2048,
-            N1=2048, N2=2048,
-        )
-    ),
+    for decay in decays
+    for style in ['small', 'medium', 'large']
 ]
+
+# experiments to run:
+# - get a loss function working that includes valid moves as part of the loss function
+# - include some board history in the input (maybe requires even more giant of a model?)
+# - add regularization
 
 print(f"#!/bin/bash")
 print(f"set -e")
 
+# FIXME make sure all config names are unique
+
 for c in configs:
-    c.setup()
+    setup(c)
+
+    name           = c['name']
+    log_dir        = c['log_dir']
+    experiment_dir = c['experiment_dir']
+    config_path    = c['experiment_dir'] + '/config.toml' # FIXME change data gen to take just the dir
 
     print("echo -----------------------")
-    print(f"echo Submitting jobs for {c.name}")
+    print(f"echo Submitting jobs for {name}")
 
     # generate the raw dataset
-    print(f"GEN=$(sbatch -J gen_{c.name} --parsable -N1 -n1 --output {c.datadir()}/gen.log ./wrap.sh {c.data_gen_command()} )");
+    data_gen_cmd = f"./wrap.sh /var/nfs/dpzmick/othello/build/apps/data_gen_policy {config_path}"
+    print(f"GEN=$(sbatch -J gen_{name} --parsable -N1 -n1 --mem-per-cpu=4G --output {log_dir}/gen.log {data_gen_cmd} )") # doesn't need wrap?
     print("echo gen job id: $GEN")
 
-    # compress everything
-    for i, cmd in enumerate(c.compression_commands()):
-        print(f"COMP_{i}=$(sbatch -J comp_{c.name} --dependency=afterok:$GEN --parsable -N1 -n1 --output {c.datadir()}/comp_{i}.log ./wrap.sh {cmd} )");
-        print(f"echo compresion job {i} id $COMP_{i}")
-
-    # generate test train split
-    deps='afterok:' + ':'.join(f'$COMP_{i}' for i,_ in enumerate(c.compression_commands()))
-    print(f"SPLIT=$(sbatch -J split_{c.name} --parsable -N1 -n1 --output {c.datadir()}/split.log --dependency={deps} ./wrap.sh python -m othello_ml.scripts.make_split {c.experiment_dir})")
+    # generate test train split, memory intensive
+    split_cmd = f"./wrap.sh python -u -m othello_ml.scripts.make_split {experiment_dir}"
+    print(f"SPLIT=$(sbatch -J split_{name} --parsable -N1 -n1 --output {log_dir}/split.log --dependency=afterok:$GEN {split_cmd} )")
     print(f"echo split job: $SPLIT")
 
     # run training
-    print(f"TRAIN=$(sbatch -J train_{c.name} --parsable -N1 -n4 --output {c.experiment_dir}/train.log --dependency=afterok:$SPLIT ./wrap.sh python -m othello_ml.scripts.train {c.experiment_dir})")
+    train_cmd = f"./wrap.sh python -u -m othello_ml.scripts.train {experiment_dir}"
+    print(f"TRAIN=$(sbatch -J train_{name} --parsable -N1 -n2 --mem-per-cpu=8G --output {log_dir}/train.log --dependency=afterok:$SPLIT {train_cmd} )")
     print(f"echo train job: $TRAIN")
 
-
-# FIXME don't really like any of this very much unfortunately
-# FIXME set memory limits on the jobs?
+# FIXME skip steps that are already done in this experiment dir
 # FIXME the binary dir should probably also be configurable
-# FIXME not really happy with this at all
-# FIXME these are not really configs

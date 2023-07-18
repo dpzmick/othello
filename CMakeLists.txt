@@ -17,6 +17,11 @@ if (EMSCRIPTEN)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ASSERTIONS=1")
 endif()
 
+if (NOT EMSCRIPTEN)
+  find_package(PkgConfig)
+  pkg_check_modules(zstd REQUIRED libzstd)
+endif()
+
 add_subdirectory(third-party)
 
 # libraries

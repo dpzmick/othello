@@ -1,4 +1,4 @@
-from ..config import ExperimentConfig, WThorConfig, DatasetConfig
+from ..config import open_config
 from ..util import SimpleDataLoader
 import sys
 
@@ -25,6 +25,29 @@ class NN(nn.Module):
         X = torch.relu(self.l2(X))
         X = self.l3(X)
         return X
+
+def loss_with_invalid(y_hat, batch_y, valid):
+    # gets lower as we select better
+    ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
+
+    # needs to get lower as we select better
+    #
+    # outputs like this should be penalized:
+    # valid: [1 0 1 0 0 0 1 ...]
+    # output: [0 1 0 0 ...]
+    #
+    # but this should be rewarded
+    # valid: [1 0 1 0 0 0 1 ...]
+    # output: [1 0 0 0 ...]
+
+    # this doens't work
+    invalid = -1 * valid + 1.0
+    wrong = torch.mean(invalid * y_hat)
+    return ce+wrong
+
+def loss_without_invalid(y_hat, batch_y, _valid):
+    ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
+    return ce
 
 def trainer(model, criterion, optimizer, train, test, epochs=5, start_epoch=0, do_checkpoints=False):
     for epoch in range(start_epoch, start_epoch+epochs):
@@ -74,10 +97,10 @@ def trainer(model, criterion, optimizer, train, test, epochs=5, start_epoch=0, d
         #         }, f"checkpoint_{epoch}.pt")
 
 
-c = ExperimentConfig.from_experiment_dir(sys.argv[1])
-batch_size = c.net_config.batch_size
+c = open_config(sys.argv[1])
+batch_size = c["settings"]["batch_size"]
 
-wandb.init(project='othello', name=c.name) # store full config here?
+wandb.init(project='othello', name=c["name"], config=c["settings"])
 
 if torch.cuda.is_available():
     print("using cuda")
@@ -88,8 +111,7 @@ elif torch.backends.mps.is_available():
 else:
     device = torch.device("cpu")
 
-print("loading cached split data")
-with lz4.frame.open(c.compressed_split_filename(), mode='rb') as f:
+with lz4.frame.open(c["files"]["split_filename"], mode='rb') as f:
     split = torch.load(f)
     train_inputs = split['train_inputs']
     train_policy = split['train_policy']
@@ -106,17 +128,18 @@ print(f"There will be {train_inputs.shape[0]/batch_size} batches")
 
 dataset = TensorDataset(train_inputs, train_policy)
 dataloader = SimpleDataLoader(dataset, batch_size)
-#dataloader = PrefetchDataLoader(dataset, batch_size)
 
 dataset_test = TensorDataset(test_inputs, test_policy)
 dataloader_test = SimpleDataLoader(dataset_test, int(test_policy.shape[0]/8))
-#dataloader_test = PrefetchDataLoader(dataset_test, int(test_policy.shape[0]/8))
 
-net = NN(c.net_config.N1, c.net_config.N2)
+# load the model and loss function from the config file
+net  = getattr(sys.modules[__name__], c["settings"]["model_name"])(**c["settings"]["model_params"])
+loss = eval(c["settings"]["loss_variant"])
+
 net.to(device)
 wandb.watch(net, log_freq=5, log='all')
 
-optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True)
+optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True, weight_decay=float(c["settings"]["weight_decay"]))
 
 # checkpoint = torch.load("checkpoint_700.pt")
 # net.load_state_dict(checkpoint['model_state_dict'])
@@ -124,17 +147,6 @@ optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True)
 # epoch = checkpoint['epoch']
 epoch = 0
 
-# maybe don't need this if we do the dedup
-
-# def loss(y_hat, batch_y, valid):
-#     invalid = -1 * valid + 1.0
-#     ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
-#     wrong = torch.mean(invalid * y_hat)
-#     return ce+wrong
-
-def loss(y_hat, batch_y, _valid):
-    ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
-    return ce
 
 print('starting training')
-trainer(net, loss, optim, dataloader, dataloader_test, epochs=128, start_epoch=epoch)
+trainer(net, loss, optim, dataloader, dataloader_test, epochs=32, start_epoch=epoch)
