@@ -6,16 +6,15 @@ import numpy as np
 experiment_root="/var/nfs/dpzmick/experiments/"
 debug = False
 
-decays = np.arange(0, 8e-4, 2e-4)
-
 configs = [
-    make_config(experiment_root, f"decay_exp_{decay:0.5f}",
+    make_config(experiment_root, f"lookback_exp_{lookback}",
                 debug=debug, include_flips=True,
                 model_style=style,
-                weight_decay=decay)
+                weight_decay=decay,
+                board_lookback=lookback)
 
-    for decay in decays
-    for style in ['small', 'medium', 'large']
+    for (style, decay) in [('small', 0), ('medium', 2e-4), ('large', 2e-4)]
+    for lookback in [1, 3, 5]
 ]
 
 # experiments to run:
@@ -51,7 +50,7 @@ for c in configs:
 
     # run training
     train_cmd = f"./wrap.sh python -u -m othello_ml.scripts.train {experiment_dir}"
-    print(f"TRAIN=$(sbatch -J train_{name} --parsable -N1 -n2 --mem-per-cpu=8G --output {log_dir}/train.log --dependency=afterok:$SPLIT {train_cmd} )")
+    print(f"TRAIN=$(sbatch -J train_{name} --parsable -N1 -n4 --mem-per-cpu=2G --output {log_dir}/train.log --dependency=afterok:$SPLIT {train_cmd} )")
     print(f"echo train job: $TRAIN")
 
 # FIXME skip steps that are already done in this experiment dir

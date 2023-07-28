@@ -124,12 +124,15 @@ nn_select_move( othello_game_t const *     game,
 void
 nn_format_input( othello_game_t const *     game,
                  othello_move_ctx_t const * ctx,
+                 othello_game_t const *     lookback_boards,
+                 size_t                     n_lookback_boards,
                  float *                    ret )
 {
   /* save to the input vector:
      1. the current player
      2. the valid moves (64)
-     3. the board */
+     3. the board
+     [4]. previous boards, if any */
 
   size_t idx = 0;
 
@@ -159,4 +162,26 @@ nn_format_input( othello_game_t const *     game,
   }
 
   assert( idx == 1+64+128 );
+
+  // save lookback boards, same layout, just jammed write in here!
+  for( size_t i = 0; i < n_lookback_boards; ++i ) {
+    othello_game_t const * lookback_board = &lookback_boards[i];
+
+    for( size_t y = 0; y < 8; ++y ) {
+      for( size_t x = 0; x < 8; ++x ) {
+        bool occupied = lookback_board->white & othello_bit_mask( x, y );
+        ret[idx++] = occupied ? 1.0f : 0.0f;
+      }
+    }
+
+    for( size_t y = 0; y < 8; ++y ) {
+      for( size_t x = 0; x < 8; ++x ) {
+        bool occupied = lookback_board->black & othello_bit_mask( x, y );
+        ret[idx++] = occupied ? 1.0f : 0.0f;
+      }
+    }
+
+  }
+
+  assert( idx == 1+64+128+128*n_lookback_boards );
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct othello_game     othello_game_t; /* forward decl */
@@ -21,4 +22,6 @@ pred_board_quality( uint64_t white,
 void
 nn_format_input( othello_game_t const *     game,
                  othello_move_ctx_t const * ctx,
+                 othello_game_t const *     lookback_boards,
+                 size_t                     n_lookback_boards,
                  float *                    ret );

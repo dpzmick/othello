@@ -1,6 +1,7 @@
 import os
 import pathlib
 import toml
+import copy
 
 # need something fancier for styles of model, maybe just a constructor and array of args?
 
@@ -23,11 +24,12 @@ def make_config(
         experiment_root, experiment_name, wthor_dir="/var/nfs/dpzmick/othello/wthor_files",
         debug=True,
         # data gen args
-        include_flips=True,
+        board_lookback=0, include_flips=True,
         # split args
         train_perc=0.8,
         # train args
-        model_style="small", loss_variant="loss_without_invalid", weight_decay=0.0, batch_size=2048):
+        model_style="small", loss_variant="loss_without_invalid", train_epochs=128,
+        weight_decay=0.0, batch_size=512):
 
     name = f'{experiment_name}_{model_style}'
     if debug:
@@ -60,21 +62,27 @@ def make_config(
             "wthor_files": wthor_filenames,
             # data gen outputs / test/train split inputs
             "ids_filename": f'{experiment_dir}/datasets/ids.dat.zst',
-            "boards_filename": f'{experiment_dir}/datasets/boards.dat.zst',
+            "boards_dir": f'{experiment_dir}/datasets/boards/',
             "policy_filename": f'{experiment_dir}/datasets/policy.dat.zst',
             # test/train split outputs / training inputs
-            "split_filename": f'{experiment_dir}/datasets/split.pt.lz4',
+            "split_filename": f'{experiment_dir}/datasets/split.pt.lz4', # FIXME this is gonna be too big too
         },
         "settings": {
+            "boards_per_file": 500_000,
+            "board_lookback": board_lookback, # how many previous boards to include. 0 means "only current board"
             "include_flips": include_flips,
             "train_perc": train_perc, # test/train split
             "batch_size": batch_size, # training
             "loss_variant": loss_variant,
             "weight_decay": weight_decay,
+            "train_epochs": 32 if debug else train_epochs,
         }
     }
 
-    config["settings"].update(model_styles[model_style])
+    # have to copy to avoid accidentally updating the template when modifying
+    # the array to include nn input shape
+    config["settings"].update(copy.deepcopy(model_styles[model_style]))
+    config["settings"]["model_params"]["input_shape"] = 1+64+128+(128*board_lookback)
 
     return config
 

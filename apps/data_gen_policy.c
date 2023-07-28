@@ -16,6 +16,8 @@
 #include <string.h>
 #include <sys/errno.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <toml.h>
 #include <unistd.h>
 
@@ -31,11 +33,13 @@ typedef struct {
 
   // outputs
   char ids_file[PATH_MAX+1];
-  char boards_file[PATH_MAX+1];
+  char boards_dir[PATH_MAX+1];
   char policy_file[PATH_MAX+1];
 
   // flags
-  bool include_flips;
+  int64_t boards_per_file;
+  int64_t board_lookback;
+  bool    include_flips;
   // FIXME should the id behavior be configurable?
   // FIXME should we have any other variants of NN input? Is the valid move set helping?
   // FIXME should we have a flag for including/exluding duplicated board states
@@ -84,21 +88,21 @@ load_config( char const * filename )
   if( !d.ok ) Fail( "Expected files.ids_filename" );
   if( strlen( d.u.s ) > PATH_MAX ) Fail( "files.ids_filename too long" );
 
-  memcpy( ret.ids_file, d.u.s, strlen(d.u.s) );
+  memcpy( ret.ids_file, d.u.s, strlen( d.u.s )+1 );
   free( d.u.s );
 
-  d = toml_string_in( files_table, "boards_filename" );
-  if( !d.ok ) Fail( "Expected files.boards_filename" );
-  if( strlen( d.u.s ) > PATH_MAX ) Fail( "files.boards_filename too long" );
+  d = toml_string_in( files_table, "boards_dir" );
+  if( !d.ok ) Fail( "Expected files.boards_dir" );
+  if( strlen( d.u.s ) > PATH_MAX ) Fail( "files.boards_dir too long" );
 
-  memcpy( ret.boards_file, d.u.s, strlen(d.u.s) );
+  memcpy( ret.boards_dir, d.u.s, strlen( d.u.s )+1 );
   free( d.u.s );
 
   d = toml_string_in( files_table, "policy_filename" );
   if( !d.ok ) Fail( "Expected files.policy_filename" );
   if( strlen( d.u.s ) > PATH_MAX ) Fail( "files.policy_filename too long" );
 
-  memcpy( ret.policy_file, d.u.s, strlen(d.u.s) );
+  memcpy( ret.policy_file, d.u.s, strlen( d.u.s )+1 );
   free( d.u.s );
 
   toml_table_t * settings_table = toml_table_in( toml_config, "settings" );
@@ -108,6 +112,18 @@ load_config( char const * filename )
   if( !toml_include_flips.ok ) Fail( "expected boolean at settings.include_flips" );
 
   ret.include_flips = toml_include_flips.u.b;
+
+  toml_datum_t toml_board_lookback = toml_int_in( settings_table, "board_lookback" );
+  if( !toml_board_lookback.ok ) Fail( "expected in at settings.board_lookback" );
+  if( toml_board_lookback.u.i < 0 ) Fail( "board lookback must be >= 0" );
+
+  ret.board_lookback = toml_board_lookback.u.i;
+
+  toml_datum_t toml_boards_per_file = toml_int_in( settings_table, "boards_per_file" );
+  if( !toml_boards_per_file.ok ) Fail( "expected value for settings.boards_per_file" );
+  if( toml_boards_per_file.u.i < 0 ) Fail( "invalid boards per file setting" );
+
+  ret.boards_per_file = toml_boards_per_file.u.i;
 
   toml_free( (void*)toml_config );
   fclose( config_file );
@@ -119,9 +135,17 @@ load_config( char const * filename )
 
 typedef struct {
   zstd_file_t * ids;
-  zstd_file_t * input;
   zstd_file_t * policy;
+
+  char          boards_dir[PATH_MAX+1];
+  size_t        next_boards_file_idx;
+  size_t        n_entries_in_file;
+  size_t        entries_per_file;
+  zstd_file_t * boards_file;
 } outputs_t;
+
+static void
+outputs_open_next_boards_file( outputs_t * outputs );
 
 static outputs_t
 outputs_from_config( config_t const * config )
@@ -131,11 +155,21 @@ outputs_from_config( config_t const * config )
   outputs.ids = zstd_file_writer( config->ids_file );
   if( !outputs.ids ) Fail( "Failed to open board ids file at %s", config->ids_file );
 
-  outputs.input = zstd_file_writer( config->boards_file ); // FIXME rationalize names
-  if( !outputs.input ) Fail( "Failed to open boards file at %s", config->boards_file );
-
   outputs.policy = zstd_file_writer( config->policy_file );
   if( !outputs.policy ) Fail( "Failed to open policy file at %s", config->policy_file );
+
+  if( 0 != mkdir( config->boards_dir, 0755 ) ) {
+    if( errno != EEXIST ) {
+      Fail( "Failed to mkdir %s", config->boards_dir );
+    }
+  }
+
+  memcpy( outputs.boards_dir, config->boards_dir, strlen( config->boards_dir )+1 ); // size already checked
+  outputs.next_boards_file_idx = 0;
+  outputs.boards_file = NULL;
+  outputs_open_next_boards_file( &outputs );
+
+  outputs.entries_per_file = (size_t)config->boards_per_file;
 
   return outputs;
 }
@@ -144,32 +178,61 @@ static void
 outputs_close( outputs_t * outputs )
 {
   zstd_file_writer_close( outputs->ids );
-  zstd_file_writer_close( outputs->input );
   zstd_file_writer_close( outputs->policy );
+  zstd_file_writer_close( outputs->boards_file ); // should be non-null
+
+  printf( "Closed last output board with %zu entries\n", outputs->n_entries_in_file );
 }
 
 static void
-outputs_save_game( outputs_t const *          outputs,
+outputs_open_next_boards_file( outputs_t * outputs )
+{
+  if( outputs->boards_file ) zstd_file_writer_close( outputs->boards_file );
+
+  char fname[PATH_MAX+32+1];
+  sprintf( fname, "%s/%05zu.dat.zst", outputs->boards_dir, outputs->next_boards_file_idx );
+  outputs->next_boards_file_idx += 1;
+
+  outputs->boards_file = zstd_file_writer( fname );
+  if( !outputs->boards_file ) Fail( "Failed to open boards file at %s", fname );
+
+  printf( "Rolling output files, previous had %zu entries, next file is %s\n", outputs->n_entries_in_file, fname );
+  outputs->n_entries_in_file = 0;
+}
+
+static void
+outputs_save_game( outputs_t *                outputs,
                    uint64_t                   id,
                    othello_game_t const *     game,
                    othello_move_ctx_t const * ctx,
                    uint8_t                    move_x,
-                   uint8_t                    move_y )
+                   uint8_t                    move_y,
+                   othello_game_t const *     history,
+                   size_t                     n_history )
 {
   /* We produce three output files:
      1. Game ID file, used to select train/test split across _games_ not just board states
      2. The NN input file, contains the game repr that is fed into the NN
      3. The policy output, expected output from the NN */
 
-  float input[193] = { 0 };
-  float policy[64] = { 0 };
+  size_t n = 1+64+128+(128*n_history);
 
-  nn_format_input( game, ctx, input );
+  float input[n];               /* ugh more vlas */
+  memset( input, 0, n*sizeof(float) );
+  nn_format_input( game, ctx, history, n_history, input );
+
+  float policy[64] = { 0 };
   policy[move_x + move_y*8] = 1.0;
 
-  zstd_file_writer_write( outputs->ids,    (void*)&id, sizeof(id) );
-  zstd_file_writer_write( outputs->input,  (void*)input, sizeof(input) );
+  zstd_file_writer_write( outputs->ids,    (void*)&id,    sizeof(id)     );
   zstd_file_writer_write( outputs->policy, (void*)policy, sizeof(policy) );
+
+  if( outputs->n_entries_in_file >= outputs->entries_per_file ) {
+    outputs_open_next_boards_file( outputs );
+  }
+
+  outputs->n_entries_in_file += 1;
+  zstd_file_writer_write( outputs->boards_file, (void*)input, sizeof(input)  );
 }
 
 /// -----------------------------
@@ -267,7 +330,7 @@ mmap_file( char const * fname )
 
 static uint64_t
 run_all_games_in_file( config_t const *     config,
-                       outputs_t const *    outputs,
+                       outputs_t *          outputs,
                        uint64_t             starting_id,
                        wthor_file_t const * file )
 {
@@ -278,6 +341,13 @@ run_all_games_in_file( config_t const *     config,
 
     othello_game_t game[1];
     othello_game_init( game );
+
+    /* VLA again.. Why not */
+    othello_game_t history[config->board_lookback];
+    memset( history, 0, sizeof(history) );
+
+    othello_game_t flipped_history[config->board_lookback];
+    memset( flipped_history, 0, sizeof(flipped_history) );
 
     /* Run the game, saving each state _and_ the move that was taken */
 
@@ -324,7 +394,13 @@ run_all_games_in_file( config_t const *     config,
       /* reset move ctx since we may have switched players */
       if( !othello_game_start_move( game, ctx, &winner ) ) Fail( "game should not be over" );
 
-      outputs_save_game( outputs, starting_id, game, ctx, x, y );
+      outputs_save_game( outputs, starting_id, game, ctx, x, y, history, (size_t)config->board_lookback );
+
+      for( int64_t i = 1; i < config->board_lookback; ++i ) {
+        history[i-1] = history[i];
+      }
+
+      history[config->board_lookback-1] = *game;
 
       if( config->include_flips ) {
         othello_game_t     flipped_game[1];
@@ -335,7 +411,13 @@ run_all_games_in_file( config_t const *     config,
 
         /* Treat the flipped game as a unique game for the purposes of train/test split */
         starting_id += 1;
-        outputs_save_game( outputs, starting_id, flipped_game, flipped_ctx, flipped_x, flipped_y );
+        outputs_save_game( outputs, starting_id, flipped_game, flipped_ctx, flipped_x, flipped_y, flipped_history, (size_t)config->board_lookback );
+
+        for( int64_t i = 1; i < config->board_lookback; ++i ) {
+          flipped_history[i-1] = flipped_history[i];
+        }
+
+        flipped_history[config->board_lookback-1] = *flipped_game;
       }
 
       bool valid = othello_game_make_move( game, ctx, othello_bit_mask( x, y ) );
@@ -363,12 +445,13 @@ main( int     argc,
 
   printf( "----------------------------\n" );
   printf( "Config loaded:\n" );
-  printf( "  Num Input files: %zu\n", config.n_wthor_filenames );
-  printf( "  Include flips: %s\n", config.include_flips ? "yes" : "no" );
+  printf( "  Num Input files: %zu\n",  config.n_wthor_filenames );
+  printf( "  Boards per file: %ld\n",  config.boards_per_file );
+  printf( "  Include flips:   %s\n",   config.include_flips ? "yes" : "no" );
   printf( "\n" );
   printf( "Outputs:\n" );
   printf( "  ids_file:    %s\n", config.ids_file );
-  printf( "  boards_file: %s\n", config.boards_file );
+  printf( "  boards_dir:  %s\n", config.boards_dir );
   printf( "  policy_file: %s\n", config.policy_file );
   printf( "----------------------------\n" );
 
