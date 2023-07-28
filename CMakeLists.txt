@@ -19,7 +19,7 @@ endif()
 
 if (NOT EMSCRIPTEN)
   find_package(PkgConfig)
-  pkg_check_modules(zstd REQUIRED libzstd)
+  pkg_check_modules(zstd REQUIRED IMPORTED_TARGET libzstd)
 endif()
 
 add_subdirectory(third-party)

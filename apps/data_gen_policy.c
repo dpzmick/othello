@@ -446,7 +446,7 @@ main( int     argc,
   printf( "----------------------------\n" );
   printf( "Config loaded:\n" );
   printf( "  Num Input files: %zu\n",  config.n_wthor_filenames );
-  printf( "  Boards per file: %ld\n",  config.boards_per_file );
+  //printf( "  Boards per file: %ld\n",  config.boards_per_file );
   printf( "  Include flips:   %s\n",   config.include_flips ? "yes" : "no" );
   printf( "\n" );
   printf( "Outputs:\n" );

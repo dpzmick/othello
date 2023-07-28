@@ -34,6 +34,8 @@ def _fill(input_dim, q, batches, proc_idx):
     open_filename = None
     data          = None
 
+    Process.name = f'fill_{proc_idx}'
+
     for batch_idx, batch_entries in enumerate(batches):
         # round robining the batches does not keep contig files read on the same
         # process, so we need to try keeping ~8 contig batches on the same
@@ -102,6 +104,34 @@ class EntryIterator(object):
 
         return torch.Tensor(batch)
 
+class EntryIteratorNoThreads(object):
+    def __init__(self, input_dim, batches):
+        self.input_dim     = input_dim
+        self.batches       = iter(batches)
+        self.open_filename = None
+        self.data          = None
+
+    def __next__(self):
+        batch_entries = next(self.batches)
+        batch_size    = len(batch_entries)
+        batch         = np.zeros( (batch_size, self.input_dim) )
+
+        for entry_idx, entry in enumerate(batch_entries):
+            file_name = entry[0]
+            file_idx  = entry[1]
+
+            if file_name != self.open_filename:
+                with open(file_name, 'rb') as f:
+                    decompressed_data = pyzstd.decompress(f.read())
+                    buf = np.frombuffer(decompressed_data, dtype=np.float32)
+
+                    self.open_filename = file_name
+                    self.data = buf.reshape( (len(buf) // self.input_dim, self.input_dim) )
+
+            batch[entry_idx,:] = self.data[file_idx,:]
+
+        return torch.Tensor(batch)
+
 
 class BoardDirLoader(object):
     """
@@ -109,7 +139,7 @@ class BoardDirLoader(object):
     not enough ram to while entire dataset in memory for the large lookback models
     """
 
-    def __init__(self, boards_dir, boards_per_file, input_dim, indices, batch_size):
+    def __init__(self, boards_dir, boards_per_file, input_dim, indices, batch_size, use_threads=True):
         """
         boards_dir: directory with boards files in it
         boards_per_file: how many entries make it into each boards file
@@ -140,13 +170,18 @@ class BoardDirLoader(object):
 
             self.batches.append(entries[st:ed])
 
-        # subprocesses created in the pool and not consumed will never get
-        # properly joined or closed
-        self.iter_pool = []
-        for _ in range(2):
-            self.iter_pool.append(EntryIterator(self.input_dim, self.batches))
+        self.use_threads = use_threads
+        if self.use_threads:
+            # subprocesses created in the pool and not consumed will never get
+            # properly joined or closed
+            self.iter_pool = []
+            for _ in range(2):
+                self.iter_pool.append(EntryIterator(self.input_dim, self.batches))
 
     def __iter__(self):
-        ret = self.iter_pool.pop()
-        self.iter_pool.append(EntryIterator(self.input_dim, self.batches))
-        return ret
+        if self.use_threads:
+            ret = self.iter_pool.pop()
+            self.iter_pool.append(EntryIterator(self.input_dim, self.batches))
+            return ret
+        else:
+            return EntryIteratorNoThreads(self.input_dim, self.batches)

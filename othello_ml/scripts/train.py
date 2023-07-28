@@ -57,8 +57,8 @@ def trainer(model, criterion, optimizer, X_train, y_train, X_test, y_test, epoch
         train_total = 0
 
         for batch_X, batch_y in zip(X_train, y_train):
-            batch_X = batch_X.to("cuda")
-            batch_y = batch_y.to("cuda") # FIXME do these transfers async as well
+            batch_X = batch_X.to("mps")
+            batch_y = batch_y.to("mps") # FIXME do these transfers async as well
 
             optimizer.zero_grad()
 
@@ -77,8 +77,8 @@ def trainer(model, criterion, optimizer, X_train, y_train, X_test, y_test, epoch
         test_total = 0
         with torch.no_grad():
             for batch_X, batch_y in zip(X_test, y_test):
-                batch_X = batch_X.to("cuda")
-                batch_y = batch_y.to("cuda")
+                batch_X = batch_X.to("mps")
+                batch_y = batch_y.to("mps")
                 y_hat = model.forward(batch_X)
                 test_correct += torch.sum(batch_y == torch.argmax(y_hat, dim=1))
                 test_total += batch_y.shape[0]
@@ -92,46 +92,47 @@ def trainer(model, criterion, optimizer, X_train, y_train, X_test, y_test, epoch
         wandb.log(data)
         print(f"epoch: {epoch+1}, {data}")
 
-c = open_config(sys.argv[1])
+if __name__ == "__main__":
+    c = open_config(sys.argv[1])
 
-batch_size      = c["settings"]["batch_size"]
-boards_dir      = c["files"]["boards_dir"]
-input_shape     = c["settings"]["model_params"]["input_shape"]
-boards_per_file = c["settings"]["boards_per_file"]
+    batch_size      = c["settings"]["batch_size"]
+    boards_dir      = c["files"]["boards_dir"]
+    input_shape     = c["settings"]["model_params"]["input_shape"]
+    boards_per_file = c["settings"]["boards_per_file"]
 
-wandb.init(project='othello', name=c["name"], config=c["settings"])
+    wandb.init(project='othello', name=c["name"], config=c["settings"])
 
-if torch.cuda.is_available():
-    print("using cuda")
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    print("using mps")
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        print("using cuda")
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        print("using mps")
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
 
-with lz4.frame.open(c["files"]["split_filename"], mode='rb') as f:
-    split = torch.load(f)
-    train_policy = split['train_policy']
-    test_policy = split['test_policy']
+    with lz4.frame.open(c["files"]["split_filename"], mode='rb') as f:
+        split = torch.load(f)
+        train_policy = split['train_policy']
+        test_policy = split['test_policy']
 
-    train_indices = split['train_idx']
-    test_indices  = split['test_idx']
+        train_indices = split['train_idx']
+        test_indices  = split['test_idx']
 
-board_dataloader = BoardDirLoader(boards_dir, boards_per_file, input_shape, train_indices, batch_size)
-policy_dataloader = SimpleDataLoader(train_policy, batch_size)
+    board_dataloader = BoardDirLoader(boards_dir, boards_per_file, input_shape, train_indices, batch_size)
+    policy_dataloader = SimpleDataLoader(train_policy, batch_size)
 
-board_dataloader_test = BoardDirLoader(boards_dir, boards_per_file, input_shape, test_indices, int(test_policy.shape[0]/8))
-policy_dataloader_test = SimpleDataLoader(test_policy, int(test_policy.shape[0]/8))
+    board_dataloader_test = BoardDirLoader(boards_dir, boards_per_file, input_shape, test_indices, int(test_policy.shape[0]/8))
+    policy_dataloader_test = SimpleDataLoader(test_policy, int(test_policy.shape[0]/8))
 
-# load the model and loss function from the config file
-net  = getattr(sys.modules[__name__], c["settings"]["model_name"])(**c["settings"]["model_params"])
-loss = eval(c["settings"]["loss_variant"])
+    # load the model and loss function from the config file
+    net  = getattr(sys.modules[__name__], c["settings"]["model_name"])(**c["settings"]["model_params"])
+    loss = eval(c["settings"]["loss_variant"])
 
-net.to(device)
-wandb.watch(net, log_freq=5, log='all')
+    net.to(device)
+    wandb.watch(net, log_freq=5, log='all')
 
-optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True, weight_decay=float(c["settings"]["weight_decay"]))
+    optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True, weight_decay=float(c["settings"]["weight_decay"]))
 
-print('starting training')
-trainer(net, loss, optim, board_dataloader, policy_dataloader, board_dataloader_test, policy_dataloader_test, epochs=c["settings"]["train_epochs"], start_epoch=0)
+    print('starting training')
+    trainer(net, loss, optim, board_dataloader, policy_dataloader, board_dataloader_test, policy_dataloader_test, epochs=c["settings"]["train_epochs"], start_epoch=0)

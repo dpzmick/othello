@@ -3,11 +3,12 @@ import numpy as np
 
 # python3 -m othello_ml.pipeline | bash -
 
-experiment_root="/var/nfs/dpzmick/experiments/"
+experiment_root="/Users/dpzmick/programming/othello/experiments"
+wthor_dir="/Users/dpzmick/programming/othello/wthor_files"
 debug = False
 
 configs = [
-    make_config(experiment_root, f"lookback_exp_{lookback}",
+    make_config(experiment_root, f"lookback_exp_{lookback}", wthor_dir=wthor_dir,
                 debug=debug, include_flips=True,
                 model_style=style,
                 weight_decay=decay,
