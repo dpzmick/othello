@@ -1,5 +1,6 @@
 from ..config import open_config
 from ..util import BoardDirLoader, SimpleDataLoader
+from ..util.tracer import Tracer
 
 import sys
 import lz4.frame
@@ -20,7 +21,9 @@ with lz4.frame.open(c["files"]["split_filename"], mode='rb') as f:
     train_indices = split['train_idx']
     test_indices  = split['test_idx']
 
-board_dataloader = BoardDirLoader(boards_dir, boards_per_file, input_shape, train_indices, batch_size)
+t = Tracer("out.trace")
+
+board_dataloader = BoardDirLoader('train', boards_dir, boards_per_file, input_shape, train_indices, batch_size, t)
 policy_dataloader = SimpleDataLoader(train_policy, batch_size)
 
 for i in range(0,3):

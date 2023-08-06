@@ -10,12 +10,24 @@ model_styles = {
         "model_name": "NN",
         "model_params": {"N1": 1024, "N2": 1024},
     },
+    "small_norm": {
+        "model_name": "NN_with_norm",
+        "model_params": {"N1": 1024, "N2": 1024},
+    },
     "medium": {
         "model_name": "NN",
         "model_params": {"N1": 2048, "N2": 1024},
     },
+    "medium_norm": {
+        "model_name": "NN_with_norm",
+        "model_params": {"N1": 2048, "N2": 1024},
+    },
     "large": {
         "model_name": "NN",
+        "model_params": {"N1": 2048, "N2": 2048},
+    },
+    "large_norm": {
+        "model_name": "NN_with_norm",
         "model_params": {"N1": 2048, "N2": 2048},
     },
 }
@@ -65,7 +77,9 @@ def make_config(
             "boards_dir": f'{experiment_dir}/datasets/boards/',
             "policy_filename": f'{experiment_dir}/datasets/policy.dat.zst',
             # test/train split outputs / training inputs
-            "split_filename": f'{experiment_dir}/datasets/split.pt.lz4', # FIXME this is gonna be too big too
+            "split_filename": f'{experiment_dir}/datasets/split.pt.lz4',
+            "trace_file": f'{experiment_dir}/trace.trace',
+            "checkpoint_dir": f'{experiment_dir}/checkpoints/'
         },
         "settings": {
             "boards_per_file": 500_000,
@@ -75,7 +89,7 @@ def make_config(
             "batch_size": batch_size, # training
             "loss_variant": loss_variant,
             "weight_decay": weight_decay,
-            "train_epochs": 32 if debug else train_epochs,
+            "train_epochs": 64 if debug else train_epochs,
         }
     }
 
@@ -89,6 +103,7 @@ def make_config(
 def setup(config):
     pathlib.Path(config["experiment_dir"]).mkdir(parents=True, exist_ok=True)
     pathlib.Path(config["experiment_dir"] + '/datasets').mkdir(parents=True, exist_ok=True)
+    pathlib.Path(config["experiment_dir"] + '/checkpoints').mkdir(parents=True, exist_ok=True)
     pathlib.Path(config["log_dir"]).mkdir(parents=True, exist_ok=True)
 
     with open(config["experiment_dir"] + '/config.toml', "w") as f:
