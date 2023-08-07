@@ -11,12 +11,13 @@ restart = False
 debug = False
 
 configs = [
-    make_config(experiment_root, f"with_norm", wthor_dir=wthor_dir,
+    make_config(experiment_root, f"try_cnn_{lookback}", wthor_dir=wthor_dir,
                 debug=debug, include_flips=True,
-                model_style=f'{size}_norm',
-                train_epochs=128,
-                board_lookback=1)
-    for size in ['medium', 'large']
+                model_style=f'cnn_{size}',
+                train_epochs=64,
+                board_lookback=lookback)
+    for size in ['small', 'medium']
+    for lookback in [2]
 ]
 
 # experiments to run:

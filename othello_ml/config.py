@@ -6,6 +6,18 @@ import copy
 # need something fancier for styles of model, maybe just a constructor and array of args?
 
 model_styles = {
+    "cnn_small": {
+        "model_name": "CNN",
+        "model_params": {"N1": 64, "N2": 64},
+    },
+    "cnn_medium": {
+        "model_name": "CNN",
+        "model_params": {"N1": 128, "N2": 64},
+    },
+    "cnn_large": {
+        "model_name": "CNN",
+        "model_params": {"N1": 1024, "N2": 64},
+    },
     "small": {
         "model_name": "NN",
         "model_params": {"N1": 1024, "N2": 1024},
@@ -89,7 +101,7 @@ def make_config(
             "batch_size": batch_size, # training
             "loss_variant": loss_variant,
             "weight_decay": weight_decay,
-            "train_epochs": 64 if debug else train_epochs,
+            "train_epochs": 16 if debug else train_epochs,
         }
     }
 

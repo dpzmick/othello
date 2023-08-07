@@ -37,10 +37,63 @@ class NN_with_norm(nn.Module):
         self.l2_norm = nn.BatchNorm1d(N2)
         self.l3 = nn.Linear(N2, 64)
 
+        # NOTE: pretty sure including the current player as input is not very
+        # helpful
+
     def forward(self, X):
         X = torch.relu(self.l1_norm(self.l1(X)))
         X = torch.relu(self.l2_norm(self.l2(X)))
         X = self.l3(X)
+        return X
+
+class CNN(nn.Module):
+    def __init__(self, input_shape, N1, N2):
+        super().__init__()
+        # HACK: the input we're provided includes an extra
+        # value for current player. We are going to ignore that
+
+        # input is input_channels worth of 8x8 boards
+        n_boards = (input_shape - 1)
+
+        # we will ignore that the first input is the valid inputs layer
+        # and just treat each 8x8 input as a separate channel
+        n_channels = n_boards // 64
+
+        # input: (n_channel, 8, 8)
+        # output: (N1, 8, 8)
+        self.l1 = nn.Conv2d(n_channels, N1, kernel_size=(3,3), padding=1)
+        self.l1_norm = nn.BatchNorm2d(N1)
+
+        # input: (N1, 8, 8)
+        # output: (N2, 8, 8)
+        self.l2 = nn.Conv2d(N1, N2, kernel_size=(3,3), padding=1)
+        self.l2_norm = nn.BatchNorm2d(N2)
+
+        # flattened, we'll have N2*8*8 inputs
+        # then run through linear layer to select the place to play
+
+        self.l3 = nn.Linear(N2*8*8, 64)
+
+        # save N2 for reshaping
+        self.N2 = N2
+
+    def forward(self, X):
+        # HACK: chop off the first entry of every input in the batch
+        # we're removing the "whose turn is it" input
+        X = X[:,1:]
+
+        batch_size = X.shape[0]
+        n_channels = X.shape[1] // 64
+        X = torch.reshape(X, (batch_size, n_channels, 8, 8) )
+
+        X = torch.relu(self.l1_norm(self.l1(X)))
+        X = torch.relu(self.l2_norm(self.l2(X)))
+
+        # flatten out and apply a final linear layer
+        # assert X.shape[0] == batch_size # slow
+        X = torch.reshape( X, (batch_size, self.N2*8*8) )
+        X = self.l3(X)
+
         return X
 
 # def loss_with_invalid(y_hat, batch_y, valid):
@@ -144,7 +197,6 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
 
 if __name__ == "__main__":
     c = open_config(sys.argv[1])
-
     t = Tracer(c["files"]["trace_file"], enabled=False)
 
     batch_size      = c["settings"]["batch_size"]
