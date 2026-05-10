@@ -85,7 +85,7 @@ pred_board_quality( uint64_t white,
   linear_layer( input, 128, hidden1, 512, l1_weights, l1_biases );
   relu( hidden1, 512 );
   linear_layer( hidden1, 512, hidden2, 512, l2_weights, l2_biases );
-  relu( hidden1, 512 );
+  relu( hidden2, 512 );
   linear_layer( hidden2, 512, out, 1, l3_weights, l3_biases );
   sigmoid( out, 1 );
 
@@ -111,7 +111,7 @@ nn_select_move( othello_game_t const *     game,
     bool           valid           = othello_game_make_move( updated_game, ctx, move );
     if( UNLIKELY( !valid ) ) Fail( "attempted to apply invalid move" );
 
-    float score = pred_board_quality( game->white, game->black );
+    float score = pred_board_quality( updated_game->white, updated_game->black );
     if( score > best_score ) {
       best_move  = move;
       best_score = score;

@@ -1,2 +1,23 @@
 .DS_Store
 build/
+emcc-build/
+web_game/dist/
+
+# nix
+.direnv/
+result
+result-*
+
+# python / uv
+.venv/
+__pycache__/
+*.pyc
+uv.lock
+
+# emscripten cache (populated by shellHook)
+.emscripten-cache/
+.emscripten-config
+
+# editor
+.vscode/
+.idea/

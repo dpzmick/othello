@@ -3,8 +3,7 @@
 
   export let api;
 
-  // gloal params
-  let aiType = 0;
+  let aiType = "0";
   let game = OthelloGame(api, aiType);
   let cells = game.getCells()
   let [whiteScore, blackScore] = game.getScores();
@@ -61,7 +60,7 @@
       {#each rowCells as cell, x}
         <td>
           <button class="cell" on:click={() => makePlay(x, y)}>
-            <div class={cell} />
+            <div class={cell}></div>
           </button>
         </td>
       {/each}
