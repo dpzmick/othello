@@ -4,6 +4,7 @@
 #include "../libcommon/hash.h"
 #include "../libcomputer/mcts.h"
 #include "../libcomputer/nn.h"
+#include "../libcomputer/nn_policy.h"
 #include "../libothello/othello.h"
 
 #include <stdbool.h>
@@ -30,10 +31,10 @@ select_random_move( uint64_t valid_moves,
 int
 main( void )
 {
-  mcts_state_t * black_player_state = malloc( mcts_state_size( 8192 ) );
+  mcts_state_t * black_player_state = malloc( mcts_state_size( (1<<16) ) );
   if( !black_player_state ) Fail( "failed to allocate" );
 
-  /* mcts_state_t * white_player_state = malloc( mcts_state_size( 8192 ) ); */
+  /* mcts_state_t * white_player_state = malloc( mcts_state_size( (1<<16) ) ); */
   /* if( !white_player_state ) Fail( "failed to allocate" ); */
 
   size_t black_wins = 0;
@@ -43,8 +44,8 @@ main( void )
   othello_game_t game[1];
   for( size_t trial = 0; trial < trials; ++trial ) {
     othello_game_init( game );
-    mcts_state_init( black_player_state, 2000, OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), 8192 );
-    /* mcts_state_init( white_player_state, 1024, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), 8192 ); */
+    mcts_state_init( black_player_state, 2000, OTHELLO_BIT_BLACK, hash_u64( (uint64_t)trial ), (1<<16) );
+    /* mcts_state_init( white_player_state, 1024, OTHELLO_BIT_WHITE, hash_u64( (uint64_t)trial ), (1<<16) ); */
 
     uint8_t winner;
     while( 1 ) {
@@ -59,7 +60,7 @@ main( void )
 
       if( !othello_game_start_move( game, ctx, &winner ) ) break;
 
-      move = nn_select_move( game, ctx );
+      move = nn_policy_select_move( game, ctx );
       valid = othello_game_make_move( game, ctx, move );
       if( !valid ) Fail( "move invalid" );
     }

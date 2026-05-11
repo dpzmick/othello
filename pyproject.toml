@@ -16,21 +16,10 @@ dependencies = [
 ]
 
 [tool.uv]
-# CPU-only torch on darwin; CUDA wheels on linux are picked up by default
-# from PyPI when running on a GPU box.
-override-dependencies = []
-
-[tool.uv.sources]
-# Pin torch to the CPU index on darwin so we don't pull in the giant
-# CUDA wheels for a machine that can't use them.
-torch = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
-]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
+# darwin: install torch from PyPI (Apple Silicon wheels include MPS support).
+# linux: also defaults to PyPI; if you want CUDA wheels on a GPU box, install
+# from https://download.pytorch.org/whl/cu121 (or current) outside of uv,
+# or add a tool.uv.sources block here.
 
 [build-system]
 requires = ["hatchling"]

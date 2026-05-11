@@ -45,7 +45,6 @@
   <select name="ai-type" id="ai-type">
     <option value="0" selected={aiType=="0"}>Monte Carlo Tree Search</option>
     <option value="1" selected={aiType=="1"}>Neural Net</option>
-    <option value="2" selected={aiType=="2"}>Monte Carlo Tree Search w/ Neural Net</option>
     <option value="3" selected={aiType=="3"}>No AI</option>
   </select>
   <button on:click={restartGame}>Restart Game</button>

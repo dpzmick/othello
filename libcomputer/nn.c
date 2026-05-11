@@ -1,3 +1,16 @@
+/* This file implements the dead value-net MLP player.
+   pred_board_quality + nn_select_move are kept alive because they are the
+   "NN player" used by thunderdome and the web game. The weights in
+   weights.c are the 2023-era 128-input MLP trained on MCTS-self-play
+   value targets. It plays poorly (0% vs MCTS-2000 in thunderdome).
+
+   nn_format_input below is still in active use: data_gen_policy.c calls
+   it to lay out training inputs for the modern policy pipeline.
+
+   TODO: when CNN policy inference lands, retire pred_board_quality and
+   nn_select_move; either split nn_format_input into its own file or
+   leave it here and rename the file accordingly. */
+
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>

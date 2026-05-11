@@ -221,6 +221,14 @@ outputs_save_game( outputs_t *                outputs,
   memset( input, 0, n*sizeof(float) );
   nn_format_input( game, ctx, history, n_history, input );
 
+  /* NOTE: policy target is one-hot per row. Duplicate boards across games
+     are written as separate rows rather than aggregated into a single soft
+     target. Cross-entropy with N duplicate one-hots equals one soft-target
+     row up to a 1/N scalar, so the model learns the empirical move
+     distribution either way -- but the duplicates inflate compute and
+     memory. Pre-aggregating boards with sample weights would cut training
+     time substantially. notes.org lists "deduplicate board positions?" as
+     a planned data-gen flag. */
   float policy[64] = { 0 };
   policy[move_x + move_y*8] = 1.0;
 
@@ -349,6 +357,14 @@ run_all_games_in_file( config_t const *     config,
     othello_game_t flipped_history[config->board_lookback];
     memset( flipped_history, 0, sizeof(flipped_history) );
 
+    /* The id identifies the game (not the move) for train/test split purposes.
+       All moves of the unflipped game share game_id; the flipped variant
+       gets its own flipped_game_id. After the game we advance starting_id
+       by 1 (no flips) or 2 (flips on). */
+
+    uint64_t game_id         = starting_id;
+    uint64_t flipped_game_id = starting_id + 1;
+
     /* Run the game, saving each state _and_ the move that was taken */
 
     uint8_t winner = (uint8_t)-1;
@@ -394,7 +410,7 @@ run_all_games_in_file( config_t const *     config,
       /* reset move ctx since we may have switched players */
       if( !othello_game_start_move( game, ctx, &winner ) ) Fail( "game should not be over" );
 
-      outputs_save_game( outputs, starting_id, game, ctx, x, y, history, (size_t)config->board_lookback );
+      outputs_save_game( outputs, game_id, game, ctx, x, y, history, (size_t)config->board_lookback );
 
       for( int64_t i = 1; i < config->board_lookback; ++i ) {
         history[i-1] = history[i];
@@ -409,9 +425,9 @@ run_all_games_in_file( config_t const *     config,
 
         flip_full_game( game, x, y, &flipped_x, &flipped_y, flipped_game, flipped_ctx );
 
-        /* Treat the flipped game as a unique game for the purposes of train/test split */
-        starting_id += 1;
-        outputs_save_game( outputs, starting_id, flipped_game, flipped_ctx, flipped_x, flipped_y, flipped_history, (size_t)config->board_lookback );
+        /* Treat the flipped game as a unique game for the purposes of
+           train/test split, but use a single id across all of its moves */
+        outputs_save_game( outputs, flipped_game_id, flipped_game, flipped_ctx, flipped_x, flipped_y, flipped_history, (size_t)config->board_lookback );
 
         for( int64_t i = 1; i < config->board_lookback; ++i ) {
           flipped_history[i-1] = flipped_history[i];
@@ -427,7 +443,7 @@ run_all_games_in_file( config_t const *     config,
       }
     }
 
-    starting_id += 1;
+    starting_id += config->include_flips ? 2 : 1;
   }
 
   return starting_id;

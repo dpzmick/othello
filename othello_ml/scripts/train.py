@@ -116,6 +116,12 @@ class CNN(nn.Module):
 #     return ce+wrong
 
 def loss_without_invalid(y_hat, batch_y, _valid):
+    # NOTE: per-row one-hot targets from data_gen_policy.c. Duplicate boards
+    # are not pre-aggregated into soft policy distributions; cross-entropy
+    # with N one-hot rows is equivalent (up to a 1/N scalar) to one row
+    # with the empirical soft target, so the network still learns the right
+    # distribution. Pre-deduping with sample weights would reduce per-epoch
+    # compute -- see the matching note in apps/data_gen_policy.c.
     ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
     return ce
 
@@ -136,14 +142,15 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
     for epoch in range(start_epoch, start_epoch+epochs):
         start_ts = time.time()
 
-        losses = 0
+        # Accumulate loss as a tensor on the device. .item() forces a
+        # GPU->CPU sync that would otherwise bottleneck the per-batch loop;
+        # we sync once per epoch at the end instead.
+        losses_t = torch.zeros((), device=device)
         train_total = 0
 
         with t.start("train"):
             for batch_X, batch_y in zip(X_train, y_train):
-                batch_X = batch_X.to("cuda")
-                batch_y = batch_y.to("cuda")
-
+                # Data already lives on device thanks to the loader setup.
                 valid = batch_X[:, 1:65]
 
                 optimizer.zero_grad()
@@ -153,8 +160,10 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
                 loss.backward()
                 optimizer.step()
 
-                losses += loss.item()
+                losses_t = losses_t + loss.detach()
                 train_total += batch_y.shape[0]
+
+        losses = losses_t.item()
 
         train_end  = time.time()
         test_start = time.time()
@@ -164,9 +173,7 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
         with t.start("test"):
             with torch.no_grad(): # GPU run is much faster when grad is disabled
                 for batch_X, batch_y in zip(X_test, y_test):
-                    batch_X = batch_X.to("cuda")
-                    batch_y = batch_y.to("cuda")
-
+                    # Data already on device.
                     y_hat = model.forward(batch_X)
                     test_correct += torch.sum(batch_y == torch.argmax(y_hat, dim=1))
                     test_total += batch_y.shape[0]
@@ -179,8 +186,10 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
                 "train_elapsed": train_end - start_ts,
                 "test_elapsed": stop_ts - train_end}
 
-        # 128 epochs takes ~8 hours, so save every 64
-        if epoch % 64 == 0:
+        # Save a checkpoint every 16 epochs. Originally was every 64 when one
+        # run was ~8 hours on the training cluster; for the local M1 runs
+        # (minutes per 128 epochs) we want more granularity.
+        if epoch % 16 == 0:
             path = f'{checkpoint_dir}/checkpoint_{epoch}.pt'
             torch.save({
                 'epoch': epoch,
@@ -194,6 +203,17 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
 
         wandb.log(data)
         print(f"epoch: {epoch+1}, {data}")
+
+    # Always save a final checkpoint so short runs leave behind something
+    # useful (the epoch-interval rule above might miss the last epoch).
+    final_path = f'{checkpoint_dir}/final.pt'
+    torch.save({
+        'epoch': start_epoch + epochs - 1,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        }, final_path)
+    with open(f'{checkpoint_dir}/LATEST', "w") as f:
+        f.write(final_path)
 
 if __name__ == "__main__":
     c = open_config(sys.argv[1])
@@ -221,7 +241,11 @@ if __name__ == "__main__":
 
     with t.start('load_split_file'):
         with lz4.frame.open(c["files"]["split_filename"], mode='rb') as f:
-            split = torch.load(f)
+            # weights_only=False because the split file contains numpy arrays
+            # alongside torch tensors; we're loading our own file so the
+            # arbitrary-code-execution risk is moot. (Could be cleaned up by
+            # converting numpy arrays to torch tensors in make_split.py.)
+            split = torch.load(f, weights_only=False)
             train_policy = split['train_policy']
             test_policy = split['test_policy']
 
@@ -231,11 +255,16 @@ if __name__ == "__main__":
     print(f'{train_policy.shape} entries in train_policy')
     print(f'{test_policy.shape} entries in test_policy')
 
+    # Move policy targets to device once. Cheap and avoids the per-batch
+    # host->device copy that the SimpleDataLoader would otherwise need.
+    train_policy = train_policy.to(device)
+    test_policy = test_policy.to(device)
+
     with t.start('create_loaders'):
-        board_dataloader = BoardDirLoader('train', boards_dir, boards_per_file, input_shape, train_indices, batch_size, t)
+        board_dataloader = BoardDirLoader('train', boards_dir, boards_per_file, input_shape, train_indices, batch_size, t, device=device)
         policy_dataloader = SimpleDataLoader(train_policy, batch_size)
 
-        board_dataloader_test = BoardDirLoader('test', boards_dir, boards_per_file, input_shape, test_indices, batch_size, t)
+        board_dataloader_test = BoardDirLoader('test', boards_dir, boards_per_file, input_shape, test_indices, batch_size, t, device=device)
         policy_dataloader_test = SimpleDataLoader(test_policy, batch_size)
 
     # load the model and loss function from the config file
