@@ -55,9 +55,46 @@ game_tree_init( game_tree_t * tree,
   tree->n_null_rets = 0;
 
   memset( tree->nodes, 0, sizeof(game_tree_node_t)*tree->n_nodes );
+
+  /* Mark every slot as "never used" via the sentinel curr_player. Probes
+     terminate at a sentinel slot (no real game can have curr_player ==
+     SENTINEL, so it never matches), giving lookup an O(chain) bound
+     instead of O(table). */
+  for( size_t i = 0; i < tree->n_nodes; i++ ) {
+    tree->nodes[i].game->curr_player = OTHELLO_GAME_SET_SENTINEL;
+  }
 }
 
 /* node is valid until the next call to get */
+
+/* Open-addressed lookup with implicit GC: a slot is "free" iff its stored
+   game has popcount < min_stones, since Othello stones only ever accumulate.
+   A slot whose curr_player == SENTINEL has never been written and acts as
+   the chain terminator (no real game has curr_player == SENTINEL, so it
+   never matches).
+
+   Subtlety: an earlier version claimed the first stale slot it saw during
+   an insert and returned. That created duplicate entries -- suppose game
+   G was previously inserted at slot S+5 (because S..S+4 were valid when G
+   was first inserted). Later, min_stones rises and slot S+2 becomes stale.
+   A new lookup of G with allow_insert=true would walk S, S+1, hit S+2 as
+   stale, claim it, and never reach the real entry at S+5. G then exists
+   in two slots; the older entry's stats get orphaned until min_stones
+   rises enough to evict that one too. Effect on play strength is small
+   (MCTS "forgets" some accumulated stats) but it's a real correctness
+   issue and was probably costing some of the noise in thunderdome runs.
+
+   Fix: remember the first stale slot we see, keep probing for a real
+   match, and only claim the remembered slot when we hit the chain
+   terminator (sentinel) or wrap. Costs ~1 extra probe per insert.
+
+   This whole scheme is a domain-specific lazy-deletion in an open-address
+   table -- it works because Othello popcount is monotonic, but the
+   interleaving of stale and valid slots that gradual min_stones growth
+   produces is exactly the canonical lazy-deletion failure mode. A
+   bump-allocated explicit tree (reset per search) would sidestep all of
+   this and be substantially faster; left as future work for when we
+   replace random-rollout MCTS with NN-guided search. */
 
 static game_tree_node_t *
 //__attribute__((noinline))
@@ -66,12 +103,14 @@ game_tree_get( game_tree_t *          tree,
                uint64_t               min_stones,
                bool                   allow_insert )
 {
-  uint64_t           hash    = othello_game_hash( game );
-  size_t             mask    = tree->mask;
-  game_tree_node_t * nodes   = tree->nodes;
-  size_t             slot    = hash & mask;
-  game_tree_node_t * ret     = NULL;
-  size_t             n_loops = 0;
+  uint64_t           hash        = othello_game_hash( game );
+  size_t             mask        = tree->mask;
+  game_tree_node_t * nodes       = tree->nodes;
+  size_t             start_slot  = hash & mask;
+  size_t             slot        = start_slot;
+  game_tree_node_t * ret         = NULL;
+  game_tree_node_t * first_stale = NULL; // earliest reusable slot in the chain
+  size_t             n_loops     = 0;
 
 #if 0
   if( min_stones < tree->max_min_stones ) Fail( "min stones cannot go backwards" );
@@ -79,34 +118,56 @@ game_tree_get( game_tree_t *          tree,
 #endif
 
   while( 1 ) {
-    game_tree_node_t * node             = &nodes[slot];
-    othello_game_t *   node_game        = node->game;
-    size_t             node_game_popcnt = othello_game_popcount( node_game );
+    game_tree_node_t * node      = &nodes[slot];
+    othello_game_t *   node_game = node->game;
 
     n_loops += 1;
 
-    // found the matching cell
-    if( LIKELY( othello_game_eq( game, node_game ) ) ) {
+    bool is_empty = ( node_game->curr_player == OTHELLO_GAME_SET_SENTINEL );
+
+    // found the matching cell. (Sentinel slots can't match -- their curr_player
+    // doesn't correspond to any real player.)
+    if( LIKELY( !is_empty && othello_game_eq( game, node_game ) ) ) {
       ret = node;
       goto done;
     }
 
-    // boards always evolve by adding new stones
-    // a cell is "empty" if it contains an earlier game state that we no longer care about
-    if( allow_insert && node_game_popcnt < min_stones ) {
-      // reset node and use it
-      *node->game    = *game;
-      node->win_cnt  = 0;
-      node->game_cnt = 0;
-      ret            = node;
+    // empty (sentinel) terminates the chain: a match cannot exist beyond here
+    if( is_empty ) {
+      if( allow_insert ) {
+        // claim the earliest stale slot we found, or this empty slot if none
+        game_tree_node_t * dst = first_stale ? first_stale : node;
+        *dst->game    = *game;
+        dst->win_cnt  = 0;
+        dst->game_cnt = 0;
+        ret = dst;
+      } else {
+        ret = NULL;
+      }
       goto done;
+    }
+
+    // remember (but don't claim yet) the first stale slot in this chain --
+    // a real match might still exist further on
+    if( allow_insert && !first_stale &&
+        othello_game_popcount( node_game ) < min_stones ) {
+      first_stale = node;
     }
 
     slot = (slot+1) & mask;
 
-    if( UNLIKELY( slot == (hash & mask) ) ) { // out of space, we wrapped around
-      tree->n_null_rets += 1;
-      ret = NULL;
+    if( UNLIKELY( slot == start_slot ) ) {
+      // walked the whole table without finding a match or a sentinel.
+      // Use the stale slot if we saw one; otherwise truly out of space.
+      if( allow_insert && first_stale ) {
+        *first_stale->game    = *game;
+        first_stale->win_cnt  = 0;
+        first_stale->game_cnt = 0;
+        ret = first_stale;
+      } else {
+        tree->n_null_rets += 1;
+        ret = NULL;
+      }
       goto done;
     }
   }
@@ -119,7 +180,6 @@ done:
 
 // -------------------
 
-#include "nn.h"
 #include <inttypes.h>
 
 static void
@@ -144,9 +204,6 @@ dump_json( FILE *                 f,
     float criteria = win_cnt/game_cnt
       + sqrtf( 2.0f ) * sqrtf( log2f( (float)parent_game_cnt ) / game_cnt );
     fprintf( f, ",\"criteria\": %0.3f", (double)criteria );
-
-    float nn = pred_board_quality( root->white, root->black );
-    fprintf( f, ",\"nn\": %0.3f", (double)nn );
   }
   fprintf( f, ",\"board\": [" );
 

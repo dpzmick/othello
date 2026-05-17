@@ -1,6 +1,6 @@
 #include "../libcommon/common.h"
 #include "../libcommon/hash.h"
-#include "../libcomputer/nn.h"
+#include "../libcomputer/nn_policy.h"
 #include "../libothello/othello.h"
 #include "../misc/wthor.h"
 #include "zstd_file.h"
@@ -215,11 +215,16 @@ outputs_save_game( outputs_t *                outputs,
      2. The NN input file, contains the game repr that is fed into the NN
      3. The policy output, expected output from the NN */
 
-  size_t n = 1+64+128+(128*n_history);
+  size_t n = 64+128+(128*n_history);  /* canonicalized; no player byte */
 
-  float input[n];               /* ugh more vlas */
-  memset( input, 0, n*sizeof(float) );
-  nn_format_input( game, ctx, history, n_history, input );
+  /* nn_format_input writes float32 0.0/1.0 values; downcast to uint8 so the
+     on-disk boards file is 1/4 the size and the Python loader reads uint8
+     directly. */
+  float   input_f[n];           /* ugh more vlas */
+  uint8_t input_u8[n];
+  memset( input_f, 0, n*sizeof(float) );
+  nn_format_input( game, ctx, history, n_history, input_f );
+  for( size_t i = 0; i < n; ++i ) input_u8[i] = (uint8_t)input_f[i];
 
   /* NOTE: policy target is one-hot per row. Duplicate boards across games
      are written as separate rows rather than aggregated into a single soft
@@ -240,68 +245,85 @@ outputs_save_game( outputs_t *                outputs,
   }
 
   outputs->n_entries_in_file += 1;
-  zstd_file_writer_write( outputs->boards_file, (void*)input, sizeof(input)  );
+  zstd_file_writer_write( outputs->boards_file, (void*)input_u8, sizeof(input_u8) );
 }
 
 /// -----------------------------
-/// flipperoo
+/// symmetry transformations
+
+/* Full D4: 4 rotations + 4 reflections. The 8 symmetries together generate
+   all dihedral transforms of the 8x8 board. Othello has full D4 symmetry --
+   the starting position and the rules are invariant under any of these --
+   so each WTHOR game contributes 8 distinct training samples.
+
+   transform_id:
+     0 = identity:        (x, y) -> (x, y)
+     1 = rot 90 CCW:      (x, y) -> (y, 7-x)
+     2 = rot 180:         (x, y) -> (7-x, 7-y)
+     3 = rot 270 CCW:     (x, y) -> (7-y, x)
+     4 = flip horizontal: (x, y) -> (7-x, y)
+     5 = transpose:       (x, y) -> (y, x)
+     6 = flip vertical:   (x, y) -> (x, 7-y)
+     7 = anti-transpose:  (x, y) -> (7-y, 7-x)
+*/
+#define N_SYMMETRIES 8
+
+static inline void
+transform_xy( int transform_id, uint8_t x, uint8_t y, uint8_t * out_x, uint8_t * out_y )
+{
+  switch( transform_id ) {
+    case 0: *out_x = x;     *out_y = y;     break;
+    case 1: *out_x = y;     *out_y = 7 - x; break;
+    case 2: *out_x = 7 - x; *out_y = 7 - y; break;
+    case 3: *out_x = 7 - y; *out_y = x;     break;
+    case 4: *out_x = 7 - x; *out_y = y;     break;
+    case 5: *out_x = y;     *out_y = x;     break;
+    case 6: *out_x = x;     *out_y = 7 - y; break;
+    case 7: *out_x = 7 - y; *out_y = 7 - x; break;
+    default: Fail( "bad transform_id %d", transform_id );
+  }
+}
 
 static void
-flip_full_game( othello_game_t const * game,
-                uint8_t                move_x,
-                uint8_t                move_y,
-                uint8_t *              out_flipped_move_x,
-                uint8_t *              out_flipped_move_y,
-                othello_game_t *       out_flipped_game,
-                othello_move_ctx_t *   out_flipped_ctx )
+transform_full_game( int                    transform_id,
+                     othello_game_t const * game,
+                     uint8_t                move_x,
+                     uint8_t                move_y,
+                     uint8_t *              out_move_x,
+                     uint8_t *              out_move_y,
+                     othello_game_t *       out_game,
+                     othello_move_ctx_t *   out_ctx )
 {
+  memset( out_game, 0, sizeof(*out_game) );
 
-  memset( out_flipped_game, 0, sizeof(*out_flipped_game) );
+  transform_xy( transform_id, move_x, move_y, out_move_x, out_move_y );
 
-  // -- setup move
-  *out_flipped_move_x = 7 - move_x;
-  *out_flipped_move_y = 7 - move_y;
+  out_game->curr_player = game->curr_player;
 
-  // -- setup game
-
-  out_flipped_game->curr_player = game->curr_player;
-
-  for( uint64_t x = 0; x < 8; ++x ) {
-    for( uint64_t y = 0; y < 8; ++y ) {
-      uint64_t flipx = 7 - x;
-      uint64_t flipy = 7 - y;
+  for( uint8_t x = 0; x < 8; ++x ) {
+    for( uint8_t y = 0; y < 8; ++y ) {
+      uint8_t tx, ty;
+      transform_xy( transform_id, x, y, &tx, &ty );
 
       if( game->white & othello_bit_mask( x, y ) ) {
-        // should be no piece here yet in new board
-        assert( (out_flipped_game->white & othello_bit_mask( flipx, flipy )) ==0 );
-        assert( (out_flipped_game->black & othello_bit_mask( flipx, flipy )) ==0 );
-
-        out_flipped_game->white |= othello_bit_mask( flipx, flipy );
+        out_game->white |= othello_bit_mask( tx, ty );
       }
-
       if( game->black & othello_bit_mask( x, y ) ) {
-        // should be no piece here yet in new board
-        assert( (out_flipped_game->white & othello_bit_mask( flipx, flipy )) ==0 );
-        assert( (out_flipped_game->black & othello_bit_mask( flipx, flipy )) ==0 );
-
-        out_flipped_game->black |= othello_bit_mask( flipx, flipy );
+        out_game->black |= othello_bit_mask( tx, ty );
       }
     }
   }
 
-  // -- setup ctx
   uint8_t winner;
-  if( !othello_game_start_move( out_flipped_game, out_flipped_ctx, &winner ) ) {
-    Fail( "failed to start flip game move" );
+  if( !othello_game_start_move( out_game, out_ctx, &winner ) ) {
+    Fail( "transform t=%d produced a finished game", transform_id );
   }
 
-  // sanity check
-  // copy to avoid mutating
-  othello_game_t     _tmp_game = *out_flipped_game;
-  othello_move_ctx_t _tmp_ctx  = *out_flipped_ctx;
-
-  if( !othello_game_make_move( &_tmp_game, &_tmp_ctx, othello_bit_mask( *out_flipped_move_x, *out_flipped_move_y ) ) ) {
-    Fail( "Invalid flipped moved saved to file" );
+  /* sanity: the transformed move should be valid on the transformed board */
+  othello_game_t     _tmp_game = *out_game;
+  othello_move_ctx_t _tmp_ctx  = *out_ctx;
+  if( !othello_game_make_move( &_tmp_game, &_tmp_ctx, othello_bit_mask( *out_move_x, *out_move_y ) ) ) {
+    Fail( "transformed move (t=%d) is not valid", transform_id );
   }
 }
 
@@ -342,6 +364,12 @@ run_all_games_in_file( config_t const *     config,
                        uint64_t             starting_id,
                        wthor_file_t const * file )
 {
+  /* When include_flips is on we emit all 4 D4 rotations per board. The 180
+     rotation maps Othello's starting position to itself; the 90/270 ones
+     produce a color-swapped layout that nn_format_input absorbs via
+     canonicalization. */
+  int n_transforms = config->include_flips ? N_SYMMETRIES : 1;
+
   for( size_t game_idx = 0; game_idx < wthor_file_n_games( file ); ++game_idx ) {
     wthor_game_t const * fgame = file->games + game_idx;
 
@@ -350,20 +378,19 @@ run_all_games_in_file( config_t const *     config,
     othello_game_t game[1];
     othello_game_init( game );
 
-    /* VLA again.. Why not */
-    othello_game_t history[config->board_lookback];
-    memset( history, 0, sizeof(history) );
-
-    othello_game_t flipped_history[config->board_lookback];
-    memset( flipped_history, 0, sizeof(flipped_history) );
+    /* VLA again.. Why not. One history buffer per transform. */
+    othello_game_t histories[N_SYMMETRIES][config->board_lookback];
+    memset( histories, 0, sizeof(histories) );
 
     /* The id identifies the game (not the move) for train/test split purposes.
-       All moves of the unflipped game share game_id; the flipped variant
-       gets its own flipped_game_id. After the game we advance starting_id
-       by 1 (no flips) or 2 (flips on). */
+       All moves of the unflipped game share game_id; each rotation variant
+       gets its own id. After the game we advance starting_id by the number
+       of transforms we emitted. */
 
-    uint64_t game_id         = starting_id;
-    uint64_t flipped_game_id = starting_id + 1;
+    uint64_t transform_ids[N_SYMMETRIES];
+    for( int t = 0; t < n_transforms; ++t ) {
+      transform_ids[t] = starting_id + (uint64_t)t;
+    }
 
     /* Run the game, saving each state _and_ the move that was taken */
 
@@ -410,30 +437,26 @@ run_all_games_in_file( config_t const *     config,
       /* reset move ctx since we may have switched players */
       if( !othello_game_start_move( game, ctx, &winner ) ) Fail( "game should not be over" );
 
-      outputs_save_game( outputs, game_id, game, ctx, x, y, history, (size_t)config->board_lookback );
+      /* Emit one training row per transform. t=0 is the identity, so the
+         original (no-rotation) game is always saved. */
+      for( int t = 0; t < n_transforms; ++t ) {
+        othello_game_t     tgame[1];
+        othello_move_ctx_t tctx[1];
+        uint8_t            tx, ty;
 
-      for( int64_t i = 1; i < config->board_lookback; ++i ) {
-        history[i-1] = history[i];
-      }
+        transform_full_game( t, game, x, y, &tx, &ty, tgame, tctx );
 
-      history[config->board_lookback-1] = *game;
-
-      if( config->include_flips ) {
-        othello_game_t     flipped_game[1];
-        othello_move_ctx_t flipped_ctx[1];
-        uint8_t            flipped_x, flipped_y;
-
-        flip_full_game( game, x, y, &flipped_x, &flipped_y, flipped_game, flipped_ctx );
-
-        /* Treat the flipped game as a unique game for the purposes of
-           train/test split, but use a single id across all of its moves */
-        outputs_save_game( outputs, flipped_game_id, flipped_game, flipped_ctx, flipped_x, flipped_y, flipped_history, (size_t)config->board_lookback );
+        /* Each transform variant is a unique "game" for the purposes of
+           train/test split, but uses a single id across all of its moves. */
+        outputs_save_game( outputs, transform_ids[t], tgame, tctx, tx, ty,
+                           histories[t], (size_t)config->board_lookback );
 
         for( int64_t i = 1; i < config->board_lookback; ++i ) {
-          flipped_history[i-1] = flipped_history[i];
+          histories[t][i-1] = histories[t][i];
         }
-
-        flipped_history[config->board_lookback-1] = *flipped_game;
+        if( config->board_lookback > 0 ) {
+          histories[t][config->board_lookback-1] = *tgame;
+        }
       }
 
       bool valid = othello_game_make_move( game, ctx, othello_bit_mask( x, y ) );
@@ -443,7 +466,7 @@ run_all_games_in_file( config_t const *     config,
       }
     }
 
-    starting_id += config->include_flips ? 2 : 1;
+    starting_id += (uint64_t)n_transforms;
   }
 
   return starting_id;

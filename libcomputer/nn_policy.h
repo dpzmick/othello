@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct othello_game     othello_game_t;
@@ -17,3 +18,19 @@ typedef struct othello_move_ctx othello_move_ctx_t;
 uint64_t
 nn_policy_select_move( othello_game_t const *     game,
                        othello_move_ctx_t const * ctx );
+
+/* Format the NN input vector into `ret`. The buffer must be sized to
+   exactly 64 + 128 + (128 * n_lookback_boards) floats.
+
+   Canonicalized layout (no current-player byte):
+     [0:64)    -- valid-move bitmap as floats (1.0 where the player to
+                   move can play, 0.0 elsewhere)
+     [64:128)  -- "my" pieces plane (the color whose turn it is)
+     [128:192) -- "opponent" pieces plane
+     [192:...) -- lookback boards, same my/opp convention */
+void
+nn_format_input( othello_game_t const *     game,
+                 othello_move_ctx_t const * ctx,
+                 othello_game_t const *     lookback_boards,
+                 size_t                     n_lookback_boards,
+                 float *                    ret );
