@@ -8,6 +8,16 @@
   let cells = game.getCells()
   let [whiteScore, blackScore] = game.getScores();
   let player = game.turn();
+  let nValid = game.nValidMoves();
+  let isOver = game.gameOver();
+
+  function refreshState() {
+    cells = game.getCells();
+    [whiteScore, blackScore] = game.getScores();
+    player = game.turn();
+    nValid = game.nValidMoves();
+    isOver = game.gameOver();
+  }
 
   let dialog; // Reference to the dialog tag
   const closeClick = () => {
@@ -20,20 +30,22 @@
 
     aiType = selected;
     game = OthelloGame(api, aiType);
-    cells = game.getCells()
-    let [_whiteScore, _blackScore] = game.getScores(); // binding directly not compiling right?
-    whiteScore = _whiteScore;
-    blackScore = _blackScore;
-    player = game.turn();
+    refreshState();
 
     dialog.close();
   };
 
   function makePlay(x,y) {
     game.playAt(x,y);
-    cells = game.getCells();
-    [whiteScore, blackScore] = game.getScores(); // for some reason this works here
-    player = game.turn();
+    refreshState();
+  }
+
+  // When the human has no legal moves but the game isn't over, the only
+  // available action is "pass". Any cell coordinate works -- the C wrapper
+  // auto-passes whenever own_moves is empty.
+  function passTurn() {
+    game.playAt(0, 0);
+    refreshState();
   }
 </script>
 
@@ -52,7 +64,20 @@
 </dialog>
 
 <p>White: {whiteScore}. Black: {blackScore}</p>
-<p>{player} to play</p>
+{#if isOver}
+  {#if whiteScore > blackScore}
+    <p><strong>Game over — white wins.</strong></p>
+  {:else if blackScore > whiteScore}
+    <p><strong>Game over — black wins.</strong></p>
+  {:else}
+    <p><strong>Game over — tied.</strong></p>
+  {/if}
+{:else}
+  <p>{player} to play{#if nValid === 0} (no legal moves — must pass){/if}</p>
+  {#if nValid === 0}
+    <button on:click={passTurn}>Pass</button>
+  {/if}
+{/if}
 <table>
   {#each cells as rowCells, y}
     <tr>

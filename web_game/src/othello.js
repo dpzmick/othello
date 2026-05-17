@@ -12,6 +12,12 @@ export async function setupApi() {
 
     play_at: othelloMod.cwrap("othello_wrap_play_at",
                               "number", ["number", "number", "number"]),
+
+    n_valid_moves: othelloMod.cwrap("othello_wrap_n_valid_moves",
+                                    "number", ["number"]),
+
+    game_over: othelloMod.cwrap("othello_wrap_game_over",
+                                "number", ["number"]),
   };
 }
 
@@ -62,6 +68,14 @@ export function OthelloGame(api, aiType) {
 
     playAt: function(x, y) {
       api.play_at(g, x, y);
+    },
+
+    nValidMoves: function() {
+      return api.n_valid_moves(g);
+    },
+
+    gameOver: function() {
+      return api.game_over(g) !== 0;
     },
   };
 }
