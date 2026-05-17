@@ -58,7 +58,8 @@
               echo "CACHE = '$EM_CACHE'" >> "$EM_CONFIG"
             fi
 
-            # uv: keep the venv inside the project so direnv etc. pick it up.
+            # uv: keep the venv at the repo root (not under training/) so it
+            # survives across cwd changes and direnv picks it up.
             export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 
             echo
@@ -67,8 +68,8 @@
             echo "  run tests:      ./build/tests/test"
             echo "  web (dev):      cd web_game && npm install && npm run dev"
             echo "  web (wasm):     emcmake cmake -B emcc-build -S . && cmake --build emcc-build -j"
-            echo "  python setup:   uv sync"
-            echo "  python run:     uv run python -m othello_ml.pipeline"
+            echo "  python setup:   uv sync --project training"
+            echo "  python run:     uv run --project training python -m othello_ml.scripts.train <experiment_dir>"
             echo
           '';
         };

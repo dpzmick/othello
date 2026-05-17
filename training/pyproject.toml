@@ -11,8 +11,10 @@ dependencies = [
     "lz4>=4.3",
     "toml>=0.10",
     "tqdm>=4.66",
+    "matplotlib>=3.8",
     # Linux-only: used by util/loaders.py for shared memory prefetch.
     "fallocate>=1.6 ; sys_platform == 'linux'",
+    "modal>=1.4.2",
 ]
 
 [tool.uv]

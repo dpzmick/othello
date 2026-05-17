@@ -12,22 +12,20 @@ import os
 from ..config import make_config, setup
 
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 
 config = make_config(
     experiment_root=os.path.join(REPO_ROOT, 'experiments'),
-    experiment_name='local_smoke',
+    experiment_name='local_reg',
     wthor_dir=os.path.join(REPO_ROOT, 'wthor_files'),
-    debug=True,                    # debug=True gates a 10-file wthor subset
+    debug=False,                   # all 46 wthor files
     include_flips=True,
     model_style='small',           # 1024 -> 1024 MLP
     board_lookback=0,              # Othello is Markovian; no history
     train_epochs=32,
     batch_size=4096,               # MLP is tiny; bigger batch = better GPU util
+    weight_decay=1e-4,             # cheap L2; model was overfitting hard
 )
-
-# debug=True caps train_epochs at 16; override that for our local run.
-config['settings']['train_epochs'] = 32
 
 setup(config)
 

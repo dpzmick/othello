@@ -3,6 +3,22 @@ import pathlib
 import toml
 import copy
 
+
+# Short tag for the loss variant so sweeps comparing loss functions don't
+# collide on the same dir name. Add new entries here as new losses appear.
+LOSS_TAGS = {
+    "loss_without_invalid": "lossall",
+    "loss_masked_to_valid": "lossmask",
+}
+
+
+def make_run_dir_name(experiment_name, model_style, loss_variant, debug):
+    """Pure-string name builder; no filesystem access. Lets local entrypoints
+    compute the run dir name without needing the WTHOR data dir to exist."""
+    loss_tag = LOSS_TAGS.get(loss_variant, loss_variant)
+    suffix = "_debug" if debug else "_full"
+    return f"{experiment_name}_{model_style}_{loss_tag}{suffix}"
+
 # need something fancier for styles of model, maybe just a constructor and array of args?
 
 model_styles = {
@@ -18,8 +34,30 @@ model_styles = {
         "model_name": "CNN",
         "model_params": {"N1": 1024, "N2": 64},
     },
+    "tiny": {
+        "model_name": "NN",
+        "model_params": {"N1": 256, "N2": 128},
+    },
+    "single_256": {
+        # one-hidden-layer MLP; tests "is L2 doing anything?"
+        "model_name": "NN_single",
+        "model_params": {"N1": 256},
+    },
+    "single_1024": {
+        "model_name": "NN_single",
+        "model_params": {"N1": 1024},
+    },
+    "single_2048": {
+        "model_name": "NN_single",
+        "model_params": {"N1": 2048},
+    },
     "small": {
         "model_name": "NN",
+        "model_params": {"N1": 1024, "N2": 1024},
+    },
+    "small_no_valid": {
+        # Drops the valid-moves input plane (L1 sees 128 features instead of 192).
+        "model_name": "NN_no_valid",
         "model_params": {"N1": 1024, "N2": 1024},
     },
     "small_norm": {
@@ -52,14 +90,10 @@ def make_config(
         # split args
         train_perc=0.8,
         # train args
-        model_style="small", loss_variant="loss_without_invalid", train_epochs=128,
-        weight_decay=0.0, batch_size=512):
+        model_style="small", loss_variant="loss_masked_to_valid", train_epochs=128,
+        weight_decay=0.0, batch_size=512, profile=False):
 
-    name = f'{experiment_name}_{model_style}'
-    if debug:
-        name += '_debug'
-    else:
-        name += '_full'
+    name = make_run_dir_name(experiment_name, model_style, loss_variant, debug)
 
     # salt the name with a timestamp or something?
 
@@ -102,13 +136,16 @@ def make_config(
             "loss_variant": loss_variant,
             "weight_decay": weight_decay,
             "train_epochs": 16 if debug else train_epochs,
+            "profile": profile,
         }
     }
 
     # have to copy to avoid accidentally updating the template when modifying
     # the array to include nn input shape
     config["settings"].update(copy.deepcopy(model_styles[model_style]))
-    config["settings"]["model_params"]["input_shape"] = 1+64+128+(128*board_lookback)
+    # Canonicalized input: 64 valid-moves + 128 my/opp pieces (+128 per lookback).
+    # No current-player byte -- the perspective is always "the player to move".
+    config["settings"]["model_params"]["input_shape"] = 64+128+(128*board_lookback)
 
     return config
 

@@ -27,6 +27,46 @@ class NN(nn.Module):
         X = self.l3(X)
         return X
 
+
+class NN_single(nn.Module):
+    """Single-hidden-layer MLP -- input -> N1 -> 64. Tests whether the middle
+    layer in NN is doing useful work or just acting as a pass-through."""
+    def __init__(self, input_shape, N1):
+        super().__init__()
+        self.l1 = nn.Linear(input_shape, N1)
+        # name the output l3 so dump_weights / nn_policy.c keep using a
+        # consistent naming convention (even though there's no l2 here).
+        self.l3 = nn.Linear(N1, 64)
+
+    def forward(self, X):
+        X = torch.relu(self.l1(X))
+        X = self.l3(X)
+        return X
+
+
+class NN_no_valid(nn.Module):
+    """NN that ignores the valid-moves input plane. Inspect-policy saliency
+    showed near-zero gradient on the valid plane under loss_masked_to_valid,
+    so the network shouldn't need it as input -- legality is enforced at
+    argmax time by C inference. Dropping it shrinks L1 by 33% (real RAM on
+    Playdate). loss_masked_to_valid still receives the valid plane via the
+    batch slice [:, 0:64] in the trainer."""
+    def __init__(self, input_shape, N1, N2):
+        super().__init__()
+        # input_shape ignored: nn_format_input still produces 192 bytes
+        # (valid + my + opp) but we slice off the valid plane in forward.
+        del input_shape
+        self.l1 = nn.Linear(128, N1)
+        self.l2 = nn.Linear(N1, N2)
+        self.l3 = nn.Linear(N2, 64)
+
+    def forward(self, X):
+        X = X[:, 64:]  # drop valid-moves plane; keep my + opp (+ lookback if any)
+        X = torch.relu(self.l1(X))
+        X = torch.relu(self.l2(X))
+        X = self.l3(X)
+        return X
+
 class NN_with_norm(nn.Module):
     def __init__(self, input_shape, N1, N2):
         super().__init__()
@@ -125,6 +165,16 @@ def loss_without_invalid(y_hat, batch_y, _valid):
     ce = torch.nn.functional.cross_entropy(y_hat, batch_y)
     return ce
 
+
+def loss_masked_to_valid(y_hat, batch_y, valid):
+    # Cross-entropy restricted to legal moves: softmax denominator only sums
+    # over valid squares so the network competes among legal moves instead of
+    # against illegal ones. Without this, the easy way to lower CE is to copy
+    # the valid-moves input plane into the output and the policy never has to
+    # learn from board state. valid is (B, 64) float 0/1 from the input batch.
+    masked = y_hat.masked_fill(valid == 0, -1e9)
+    return torch.nn.functional.cross_entropy(masked, batch_y)
+
 def train_step(model, optimizer, batch_X, batch_y):
     optimizer.zero_grad()
     y_hat = model.forward(batch_X)
@@ -138,7 +188,29 @@ def train_step(model, optimizer, batch_X, batch_y):
 # train_step = torch.compile(train_step) # cannot compile this, something about max not being supported?
 # just compiling the model isn't really interesting at all but I guess that's all we're gonna get
 
-def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, checkpoint_dir, epochs=5, start_epoch=0):
+def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, checkpoint_dir, epochs=5, start_epoch=0, patience=8, profile_dir=None):
+    # Track best test accuracy and bail out if it stops improving for
+    # `patience` epochs. best.pt is what dump_weights.py picks up via LATEST.
+    best_test_acc            = -1.0
+    best_epoch               = -1
+    epochs_since_improvement = 0
+
+    # Optional torch.profiler capture. Schedule = 2 wait + 3 warmup + 10 active,
+    # so we get a Chrome trace of 10 representative training steps after the
+    # first few have warmed up the loaders/compile/cudnn-autotune.
+    prof = None
+    if profile_dir is not None:
+        os.makedirs(profile_dir, exist_ok=True)
+        prof = torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CPU,
+                        torch.profiler.ProfilerActivity.CUDA],
+            schedule=torch.profiler.schedule(wait=2, warmup=3, active=10, repeat=1),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(profile_dir),
+            record_shapes=True,
+        )
+        prof.start()
+        print(f"[profile] capturing to {profile_dir}")
+
     for epoch in range(start_epoch, start_epoch+epochs):
         start_ts = time.time()
 
@@ -151,7 +223,9 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
         with t.start("train"):
             for batch_X, batch_y in zip(X_train, y_train):
                 # Data already lives on device thanks to the loader setup.
-                valid = batch_X[:, 1:65]
+                # Valid-moves plane is now at [0:64] (canonicalized input,
+                # no leading player byte).
+                valid = batch_X[:, 0:64]
 
                 optimizer.zero_grad()
                 y_hat = model.forward(batch_X)
@@ -162,6 +236,9 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
 
                 losses_t = losses_t + loss.detach()
                 train_total += batch_y.shape[0]
+
+                if prof is not None:
+                    prof.step()
 
         losses = losses_t.item()
 
@@ -174,7 +251,12 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
             with torch.no_grad(): # GPU run is much faster when grad is disabled
                 for batch_X, batch_y in zip(X_test, y_test):
                     # Data already on device.
+                    valid = batch_X[:, 0:64]
                     y_hat = model.forward(batch_X)
+                    # Argmax over legal moves only, matching C inference. Without
+                    # the mask, networks trained with loss_masked_to_valid look
+                    # spuriously worse because illegal logits aren't suppressed.
+                    y_hat = y_hat.masked_fill(valid == 0, -1e9)
                     test_correct += torch.sum(batch_y == torch.argmax(y_hat, dim=1))
                     test_total += batch_y.shape[0]
 
@@ -186,34 +268,64 @@ def trainer(t, model, criterion, optimizer, X_train, y_train, X_test, y_test, ch
                 "train_elapsed": train_end - start_ts,
                 "test_elapsed": stop_ts - train_end}
 
-        # Save a checkpoint every 16 epochs. Originally was every 64 when one
-        # run was ~8 hours on the training cluster; for the local M1 runs
-        # (minutes per 128 epochs) we want more granularity.
+        # Periodic checkpoint every 16 epochs (was every 64 from the cluster
+        # days; smaller granularity for fast local runs).
         if epoch % 16 == 0:
             path = f'{checkpoint_dir}/checkpoint_{epoch}.pt'
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': model.state_dict(),
+                'model_state_dict': (model._orig_mod.state_dict()
+                                     if hasattr(model, '_orig_mod')
+                                     else model.state_dict()),
                 'optimizer_state_dict': optimizer.state_dict(),
                 }, path)
 
+        # Early-stopping checkpoint: save whenever test accuracy hits a new
+        # high. LATEST points here so dump_weights.py picks up the best model
+        # rather than the final-epoch one (which may be past the peak).
+        epoch_test_acc = (test_correct / test_total).item() if hasattr(test_correct, 'item') else (test_correct / test_total)
+        if epoch_test_acc > best_test_acc:
+            best_test_acc            = epoch_test_acc
+            best_epoch               = epoch
+            epochs_since_improvement = 0
+            best_path = f'{checkpoint_dir}/best.pt'
+            torch.save({
+                'epoch': epoch,
+                'test_acc': epoch_test_acc,
+                'model_state_dict': (model._orig_mod.state_dict()
+                                     if hasattr(model, '_orig_mod')
+                                     else model.state_dict()),
+                'optimizer_state_dict': optimizer.state_dict(),
+                }, best_path)
             with open(f'{checkpoint_dir}/LATEST', "w") as f:
-                f.write(path)
-
+                f.write(best_path)
+        else:
+            epochs_since_improvement += 1
 
         wandb.log(data)
         print(f"epoch: {epoch+1}, {data}")
 
-    # Always save a final checkpoint so short runs leave behind something
-    # useful (the epoch-interval rule above might miss the last epoch).
+        if epochs_since_improvement >= patience:
+            print(f"early stop: no test-accuracy improvement for {patience} epochs "
+                  f"(best {best_test_acc:.4f} at epoch {best_epoch+1})")
+            break
+
+    # Always save the final epoch alongside best.pt (LATEST stays pointing
+    # at best). Useful for inspecting overfitting trajectory or resuming.
     final_path = f'{checkpoint_dir}/final.pt'
     torch.save({
         'epoch': start_epoch + epochs - 1,
-        'model_state_dict': model.state_dict(),
+        'model_state_dict': (model._orig_mod.state_dict()
+                                     if hasattr(model, '_orig_mod')
+                                     else model.state_dict()),
         'optimizer_state_dict': optimizer.state_dict(),
         }, final_path)
-    with open(f'{checkpoint_dir}/LATEST', "w") as f:
-        f.write(final_path)
+    print(f"\nbest test accuracy: {best_test_acc:.4f} at epoch {best_epoch+1}")
+    print(f"LATEST -> {checkpoint_dir}/best.pt")
+
+    if prof is not None:
+        prof.stop()
+        print(f"[profile] trace written to {profile_dir}")
 
 if __name__ == "__main__":
     c = open_config(sys.argv[1])
@@ -272,11 +384,16 @@ if __name__ == "__main__":
         net  = getattr(sys.modules[__name__], c["settings"]["model_name"])(**c["settings"]["model_params"])
         loss = eval(c["settings"]["loss_variant"])
 
-    # net = torch.compile(net) # doens't work with batch norm!
     net.to(device)
+    net = torch.compile(net)
     wandb.watch(net, log_freq=5, log='all')
 
-    optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True, weight_decay=float(c["settings"]["weight_decay"]))
+    # fused=True dispatches a single CUDA kernel for the param update across
+    # all tensors (multi-tensor apply). Only on CUDA; MPS/CPU need the default.
+    use_fused = torch.cuda.is_available()
+    optim = torch.optim.Adam(net.parameters(), lr=0.001, amsgrad=True,
+                             weight_decay=float(c["settings"]["weight_decay"]),
+                             fused=use_fused)
 
     # load checkpoint
     try:
@@ -293,7 +410,14 @@ if __name__ == "__main__":
         print('no checkpoints found')
         start_epoch = 0
 
-    print('starting training')
-    trainer(t, net, loss, optim, board_dataloader, policy_dataloader, board_dataloader_test, policy_dataloader_test, checkpoint_dir, epochs=c["settings"]["train_epochs"], start_epoch=start_epoch)
+    # When config.settings.profile is true, torch.profiler captures a short
+    # trace to <experiment_dir>/profile/ for one-off perf investigations.
+    profile_dir = None
+    if c["settings"].get("profile", False):
+        profile_dir = os.path.join(c["experiment_dir"], "profile")
+
+    epochs = c["settings"]["train_epochs"]
+    print(f'starting training (epochs={epochs}, profile={"on" if profile_dir else "off"})')
+    trainer(t, net, loss, optim, board_dataloader, policy_dataloader, board_dataloader_test, policy_dataloader_test, checkpoint_dir, epochs=epochs, start_epoch=start_epoch, profile_dir=profile_dir)
 
     t.close()
