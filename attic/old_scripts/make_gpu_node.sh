@@ -1,0 +1,19 @@
+gcloud compute instances create gpu \
+    --project=othello-385903 \
+    --zone=us-central1-a \
+    --machine-type=n1-standard-4 \
+    --no-restart-on-failure \
+    --maintenance-policy=TERMINATE \
+    --provisioning-model=SPOT \
+    --instance-termination-action=DELETE \
+    --max-run-duration=14400s \
+    --no-service-account \
+    --no-scopes \
+    --accelerator=count=1,type=nvidia-tesla-v100 \
+    --create-disk=auto-delete=yes,boot=yes,device-name=gpu,image=projects/othello-385903/global/images/gpu-base,mode=rw,size=40,type=projects/othello-385903/zones/us-central1-a/diskTypes/pd-balanced \
+    --no-shielded-secure-boot \
+    --shielded-vtpm \
+    --shielded-integrity-monitoring \
+    --labels=goog-ec-src=vm_add-gcloud \
+    --reservation-affinity=any \
+    --threads-per-core=1

@@ -14,6 +14,11 @@ __pycache__/
 *.pyc
 uv.lock
 
+# training artifacts -- live runs stay on disk; Modal volume is source of truth
+experiments/
+wandb/
+attic/old_experiments/
+
 # emscripten cache (populated by shellHook)
 .emscripten-cache/
 .emscripten-config
